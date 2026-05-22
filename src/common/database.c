@@ -51,7 +51,7 @@
 #define LAST_FULL_DATABASE_VERSION_DATA    10
 
 // You HAVE TO bump THESE versions whenever you add an update branches to _upgrade_*_schema_step()!
-#define CURRENT_DATABASE_VERSION_LIBRARY 57
+#define CURRENT_DATABASE_VERSION_LIBRARY 59
 #define CURRENT_DATABASE_VERSION_DATA    13
 
 #define USE_NESTED_TRANSACTIONS
@@ -2966,6 +2966,25 @@ static int _upgrade_library_schema_step(dt_database_t *db,
     TRY_EXEC("ALTER TABLE main.images ADD COLUMN flash_tagvalue INTEGER DEFAULT -1",
              "[init] can't add `flash_tagvalue' column to images table in database\n");
     new_version = 57;
+  }
+  else if(version == 57)
+  {
+    // Smart Previews: JPEG proxy stored in cache so images can be edited
+    // without the original RAW file being present (e.g. offline drives).
+    TRY_EXEC("ALTER TABLE main.images ADD COLUMN smartpreview_path VARCHAR DEFAULT NULL",
+             "[init] can't add `smartpreview_path' column to images table in database\n");
+    TRY_EXEC("ALTER TABLE main.images ADD COLUMN smartpreview_mtime INTEGER DEFAULT 0",
+             "[init] can't add `smartpreview_mtime' column to images table in database\n");
+    new_version = 58;
+  }
+  else if(version == 58)
+  {
+    // Virtual Copies: independent edit histories for the same physical file.
+    // NULL means this row is a master; non-NULL points to the master image id.
+    TRY_EXEC("ALTER TABLE main.images ADD COLUMN virtual_copy_of INTEGER DEFAULT NULL"
+             " REFERENCES images(id)",
+             "[init] can't add `virtual_copy_of' column to images table in database\n");
+    new_version = 59;
   }
   else
     new_version = version; // should be the fallback so that calling code sees that we are in an infinite loop

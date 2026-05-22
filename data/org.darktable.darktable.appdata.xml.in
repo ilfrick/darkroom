@@ -2,16 +2,16 @@
 <!-- Copyright (C) 2009-2025 darktable developers.
 -->
 <component type="desktop">
-  <id>org.darktable.darktable</id>
-  <name>darktable</name>
-  <launchable type="desktop-id">org.darktable.darktable.desktop</launchable>
+  <id>com.darkroom.Darkroom</id>
+  <name>Darkroom</name>
+  <launchable type="desktop-id">com.darkroom.Darkroom.desktop</launchable>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0+</project_license>
   <_summary>Organize and develop images from digital cameras</_summary>
-  <translation type="gettext">darktable</translation>
+  <translation type="gettext">darkroom</translation>
   <description>
     <_p>
-      darktable manages your camera raw files and images in a database, lets you
+      Darkroom manages your camera raw files and images in a database, lets you
       view them through lighttable mode and develop/enhance them in darkroom mode.
     </_p>
     <_p>

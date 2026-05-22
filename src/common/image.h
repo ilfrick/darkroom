@@ -101,6 +101,10 @@ typedef enum
   DT_IMAGE_MONOCHROME_BAYER = 1 << 19,
   // image has a flag set to use the monochrome workflow in the modules supporting it
   DT_IMAGE_MONOCHROME_WORKFLOW = 1 << 20,
+  // a JPEG smart-preview proxy exists in cache; image can be edited offline
+  DT_IMAGE_HAS_SMART_PREVIEW = 1 << 21,
+  // this image row is a virtual copy; virtual_copy_of points to the master
+  DT_IMAGE_IS_VIRTUAL_COPY = 1 << 22,
 } dt_image_flags_t;
 
 typedef enum dt_image_colorspace_t
@@ -301,6 +305,7 @@ typedef struct dt_image_t
   dt_filmid_t film_id;
   dt_imgid_t id;
   dt_imgid_t group_id;
+  dt_imgid_t virtual_copy_of; // INVALID_IMGID unless DT_IMAGE_IS_VIRTUAL_COPY
   //timestamps
   GTimeSpan import_timestamp, change_timestamp, export_timestamp, print_timestamp;
 

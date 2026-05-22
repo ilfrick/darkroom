@@ -71,6 +71,8 @@ FILE(GLOB SOURCE_FILES
   "common/locallaplaciancl.c"
   "common/map_locations.c"
   "common/matrices.c"
+  "common/smart_previews.c"
+  "common/virtual_copies.c"
   "common/metadata.c"
   "common/metadata_export.c"
   "common/mipmap_cache.c"

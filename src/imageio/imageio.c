@@ -82,6 +82,7 @@
   #endif
 #endif
 
+#include "common/smart_previews.h"
 #include <assert.h>
 #include <glib/gstdio.h>
 #include <inttypes.h>
@@ -1630,7 +1631,22 @@ dt_imageio_retval_t dt_imageio_open(dt_image_t *img,
   /* first of all, check if file exists, don't bother to test loading
    * if not exists */
   if(!g_file_test(filename, G_FILE_TEST_IS_REGULAR))
+  {
+    // Smart Preview fallback: if a JPEG proxy exists in cache, open that
+    // instead so the image can still be edited while the original is offline.
+    if(dt_smart_preview_exists(img->id))
+    {
+      char *proxy = dt_smart_preview_path(img->id);
+      const dt_imageio_retval_t r = dt_imageio_open_jpeg(img, proxy, buf);
+      g_free(proxy);
+      if(r == DT_IMAGEIO_OK)
+      {
+        img->flags |= DT_IMAGE_HAS_SMART_PREVIEW;
+        return DT_IMAGEIO_OK;
+      }
+    }
     return DT_IMAGEIO_FILE_NOT_FOUND;
+  }
 
   const int32_t was_hdr = (img->flags & DT_IMAGE_HDR);
   const int32_t was_bw = dt_image_monochrome_flags(img);

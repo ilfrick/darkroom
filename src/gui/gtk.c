@@ -191,8 +191,8 @@ static void _fullscreen_key_accel_callback(dt_action_t *action)
   // workaround for GTK Quartz backend bug
   gtk_window_set_title(GTK_WINDOW(widget),
                        widget == dt_ui_main_window(darktable.gui->ui)
-                       ? "darktable"
-                       : _("darktable - darkroom preview"));
+                       ? "Darkroom"
+                       : _("Darkroom - preview"));
 #endif
 }
 
@@ -1039,7 +1039,7 @@ void dt_gui_gtk_quit()
 {
   GtkWidget *win = dt_ui_main_window(darktable.gui->ui);
   dt_gui_add_class(win, "dt_gui_quit");
-  gtk_window_set_title(GTK_WINDOW(win), _("closing darktable..."));
+  gtk_window_set_title(GTK_WINDOW(win), _("closing Darkroom..."));
 
   // Write out windows dimension
   dt_gui_gtk_write_config();
@@ -1454,7 +1454,7 @@ int dt_gui_theme_init(dt_gui_gtk_t *gui)
     g_strlcpy(gui->gtkrc, css_theme, sizeof(gui->gtkrc));
   }
   else
-    g_snprintf(gui->gtkrc, sizeof(gui->gtkrc), "darktable");
+    g_snprintf(gui->gtkrc, sizeof(gui->gtkrc), "darkroom");
   // actually load the theme
   dt_gui_load_theme(gui->gtkrc);
   return 1;
@@ -1943,7 +1943,7 @@ static void _init_widgets(dt_gui_gtk_t *gui)
     // titlebar which allows for hiding that titlebar in maximized
     // windows when using an extensions such as Unite
     GtkWidget *header_bar = gtk_header_bar_new();
-    gtk_header_bar_set_title(GTK_HEADER_BAR(header_bar), "darktable");
+    gtk_header_bar_set_title(GTK_HEADER_BAR(header_bar), "Darkroom");
     gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(header_bar), TRUE);
     gtk_window_set_titlebar(GTK_WINDOW(widget), header_bar);
     gtk_widget_show(header_bar);
@@ -1956,8 +1956,8 @@ static void _init_widgets(dt_gui_gtk_t *gui)
   // allows for proper window resizing
   gtk_window_set_type_hint(GTK_WINDOW(widget), GDK_WINDOW_TYPE_HINT_NORMAL);
 
-  gtk_window_set_icon_name(GTK_WINDOW(widget), "darktable");
-  gtk_window_set_title(GTK_WINDOW(widget), "darktable");
+  gtk_window_set_icon_name(GTK_WINDOW(widget), "darkroom");
+  gtk_window_set_title(GTK_WINDOW(widget), "Darkroom");
 
   g_signal_connect(G_OBJECT(widget), "delete_event",
                    G_CALLBACK(_gui_quit_callback), NULL);
@@ -3308,7 +3308,7 @@ gboolean dt_gui_show_standalone_yes_no_dialog(const char *title,
   // themes not yet loaded, no CSS add some manual padding
   const int padding = darktable.themes ? 0 : 5;
 
-  gtk_window_set_icon_name(GTK_WINDOW(window), "darktable");
+  gtk_window_set_icon_name(GTK_WINDOW(window), "darkroom");
   gtk_window_set_title(GTK_WINDOW(window), title);
   g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
 
@@ -3401,7 +3401,7 @@ char *dt_gui_show_standalone_string_dialog(const char *title,
   dt_osx_disallow_fullscreen(window);
 #endif
 
-  gtk_window_set_icon_name(GTK_WINDOW(window), "darktable");
+  gtk_window_set_icon_name(GTK_WINDOW(window), "darkroom");
   gtk_window_set_title(GTK_WINDOW(window), title);
   g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
 

@@ -49,7 +49,8 @@ static void _image_cache_allocate(void *data,
       "       raw_black, raw_maximum, aspect_ratio, exposure_bias,"
       "       import_timestamp, change_timestamp, export_timestamp, print_timestamp,"
       "       output_width, output_height, cm.maker, cm.model, cm.alias,"
-      "       wb.name, fl.name, ep.name, mm.name, flash_tagvalue"
+      "       wb.name, fl.name, ep.name, mm.name, flash_tagvalue,"
+      "       mi.virtual_copy_of"
       "  FROM main.images AS mi"
       "       LEFT JOIN main.cameras AS cm ON cm.id = mi.camera_id"
       "       LEFT JOIN main.makers AS mk ON mk.id = mi.maker_id"
@@ -155,6 +156,10 @@ static void _image_cache_allocate(void *data,
     if(str) g_strlcpy(img->exif_metering_mode, str, sizeof(img->exif_metering_mode));
 
     img->exif_flash_tagvalue = sqlite3_column_int(stmt, 42);
+
+    img->virtual_copy_of = (sqlite3_column_type(stmt, 43) != SQLITE_NULL)
+                           ? sqlite3_column_int(stmt, 43)
+                           : NO_IMGID;
 
     dt_color_harmony_get(entry->key, &img->color_harmony_guide);
 

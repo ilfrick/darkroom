@@ -77,8 +77,8 @@ int main(int argc, char *argv[])
   {
     // NOTE! If the log file path is changed, reflect the changes at least
     // in the console message in 'usage()' of 'common\darktable.c'
-    char *logdir = g_build_filename(g_get_home_dir(), "Documents", "Darktable", NULL);
-    char *logfile = g_build_filename(logdir, "darktable-log.txt", NULL);
+    char *logdir = g_build_filename(g_get_home_dir(), "Documents", "Darkroom", NULL);
+    char *logfile = g_build_filename(logdir, "darkroom-log.txt", NULL);
 
     g_mkdir_with_parents(logdir, 0700);
 

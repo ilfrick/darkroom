@@ -25,6 +25,7 @@
 #include "common/colorlabels.h"
 #include "common/grouping.h"
 #include "common/undo.h"
+#include "common/virtual_copies.h"
 #include "common/metadata.h"
 #include "common/tags.h"
 #include "control/control.h"
@@ -50,7 +51,7 @@ typedef struct dt_lib_image_t
 {
   GtkWidget *rotate_cw_button, *rotate_ccw_button, *remove_button;
   GtkWidget *delete_button, *create_hdr_button;
-  GtkWidget *duplicate_button, *reset_button, *move_button, *copy_button;
+  GtkWidget *duplicate_button, *virtual_copy_button, *reset_button, *move_button, *copy_button;
   GtkWidget *group_button, *ungroup_button, *cache_button, *uncache_button;
   GtkWidget *refresh_button, *set_monochrome_button, *set_color_button;
   GtkWidget *copy_metadata_button, *paste_metadata_button, *clear_metadata_button;
@@ -153,6 +154,22 @@ static void _ungroup_helper_function(void)
 static void _duplicate_virgin(dt_action_t *action)
 {
   dt_control_duplicate_images(TRUE);
+}
+
+static void _create_virtual_copy(dt_action_t *action)
+{
+  sqlite3_stmt *stmt;
+  DT_DEBUG_SQLITE3_PREPARE_V2(dt_database_get(darktable.db),
+                              "SELECT imgid FROM main.selected_images",
+                              -1, &stmt, NULL);
+  while(sqlite3_step(stmt) == SQLITE_ROW)
+  {
+    const dt_imgid_t imgid = sqlite3_column_int(stmt, 0);
+    dt_virtual_copy_create(imgid);
+  }
+  sqlite3_finalize(stmt);
+  dt_collection_update_query(darktable.collection,
+                             DT_COLLECTION_CHANGE_RELOAD, DT_COLLECTION_PROP_UNDEF, NULL);
 }
 
 static void button_clicked(GtkWidget *widget, gpointer user_data)
@@ -543,7 +560,13 @@ void gui_init(dt_lib_module_t *self)
     (self, N_("duplicate"), button_clicked, GINT_TO_POINTER(3),
      _("add a duplicate to the image library, including its history stack"),
      GDK_KEY_d, GDK_CONTROL_MASK);
-  gtk_grid_attach(grid, d->duplicate_button, 2, line++, 2, 1);
+  gtk_grid_attach(grid, d->duplicate_button, 2, line, 2, 1);
+
+  d->virtual_copy_button = dt_action_button_new
+    (self, N_("virtual copy"), _create_virtual_copy, NULL,
+     _("create a virtual copy with an independent edit history — the original file is shared"),
+     GDK_KEY_v, GDK_CONTROL_MASK | GDK_SHIFT_MASK);
+  gtk_grid_attach(grid, d->virtual_copy_button, 0, line++, 2, 1);
 
   d->rotate_ccw_button = dtgtk_button_new(dtgtk_cairo_paint_refresh, CPF_NONE, NULL);;
   gtk_widget_set_name(d->rotate_ccw_button, "non-flat");

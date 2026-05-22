@@ -1686,7 +1686,7 @@ static void gui_command_line(GApplication *app, GApplicationCommandLine* cmdline
   // build the GUI
   GtkWidget *window = gtk_application_window_new(GTK_APPLICATION(app));
   self->window = window;
-  gtk_window_set_title(GTK_WINDOW(window), "darktable LUT tool");
+  gtk_window_set_title(GTK_WINDOW(window), "Darkroom LUT tool");
   gtk_container_set_border_width(GTK_CONTAINER(window), 3);
   gtk_window_set_default_size(GTK_WINDOW(window), 800, 600);
 

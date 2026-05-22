@@ -143,10 +143,10 @@ static int usage(const char *argv0)
 // Trying to keep the length of the text within 80 columns
 // Using 2-4 spaces for the indentation of the inline help
 
-  printf("darktable %s\n"
+  printf("Darkroom %s\n"
          "Copyright (C) 2012-%s Johannes Hanika and other contributors.\n\n"
-         "<https://www.darktable.org>\n"
-         "darktable is an open source photography workflow application and\n"
+         "<https://github.com/ilfrick/darkroom>\n"
+         "Darkroom is an open source photography workflow application and\n"
          "non-destructive raw developer for photographers.\n"
          "GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>\n"
          "This is free software: you are free to change and redistribute it.\n"
@@ -154,83 +154,83 @@ static int usage(const char *argv0)
          darktable_package_version,
          darktable_last_commit_year);
 
-  printf("Usage:\n"
-         "  darktable [OPTIONS] [IMAGE_FILE | IMAGE_FOLDER]\n"
-         "\n"
-         "Options:\n"
-         "\n"
-         "--cachedir DIR\n"
-         "    darktable keeps a cache of image thumbnails for fast image preview\n"
-         "    and precompiled OpenCL binaries for fast startup. By default the\n"
-         "    cache is located in $HOME/.cache/darktable/. Multiple thumbnail\n"
-         "    caches may exist in parallel, one for each library file.\n"
-         "\n"
-         "--conf KEY=VALUE\n"
-         "    Temporarily overwrite individual settings on the command line with\n"
-         "    this option - these settings will not be stored in darktablerc\n"
-         "    on exit.\n"
-         "\n"
-         "--configdir DIR\n"
-         "    Where darktable stores user-specific configuration.\n"
-         "    The default location is $HOME/.config/darktable/\n"
-         "\n"
-         "--datadir DIR\n"
-         "    Define the directory where darktable finds its runtime data.\n"
-         "    The default location depends on your installation.\n"
-         "    Typical locations are /opt/darktable/share/darktable/ \n"
-         "    and /usr/share/darktable/\n"
-         "\n"
-         "--library FILE\n"
-         "    Specifies an alternate location for darktable's image information database,\n"
-         "    which is stored in an SQLite file by default (library.db) in the directory\n"
-         "    specified by --configdir or $HOME/.config/darktable/. You can use this\n"
-         "    option for experimentation without affecting your original library.db.\n"
-         "    If the specified database file doesn't exist, darktable will create it.\n"
-         "\n"
-         "    When darktable starts, it locks the library to the current user by writing\n"
-         "    the process identifier (PID) to a lock file named FILE.lock next to the\n"
-         "    specified library. If a lock file already exists, darktable will exit.\n"
-         "\n"
-         "    :memory: -> Use this option as FILE to keep the database in system memory,\n"
-         "    discarding changes on darktable termination.\n"
-         "\n"
-         "--localedir DIR\n"
-         "    Define where darktable can find its language-specific text\n"
-         "    strings. The default location depends on your installation.\n"
-         "    Typical locations are /opt/darktable/share/locale/\n"
-         "    and /usr/share/locale/\n"
-         "\n"
+  printf(“Usage:\n”
+         “  darkroom [OPTIONS] [IMAGE_FILE | IMAGE_FOLDER]\n”
+         “\n”
+         “Options:\n”
+         “\n”
+         “--cachedir DIR\n”
+         “    Darkroom keeps a cache of image thumbnails for fast image preview\n”
+         “    and precompiled OpenCL binaries for fast startup. By default the\n”
+         “    cache is located in $HOME/.cache/darkroom/. Multiple thumbnail\n”
+         “    caches may exist in parallel, one for each library file.\n”
+         “\n”
+         “--conf KEY=VALUE\n”
+         “    Temporarily overwrite individual settings on the command line with\n”
+         “    this option - these settings will not be stored in darkroomrc\n”
+         “    on exit.\n”
+         “\n”
+         “--configdir DIR\n”
+         “    Where Darkroom stores user-specific configuration.\n”
+         “    The default location is $HOME/.config/darkroom/\n”
+         “\n”
+         “--datadir DIR\n”
+         “    Define the directory where Darkroom finds its runtime data.\n”
+         “    The default location depends on your installation.\n”
+         “    Typical locations are /opt/darkroom/share/darkroom/ \n”
+         “    and /usr/share/darkroom/\n”
+         “\n”
+         “--library FILE\n”
+         “    Specifies an alternate location for Darkroom's image information database,\n”
+         “    which is stored in an SQLite file by default (library.db) in the directory\n”
+         “    specified by --configdir or $HOME/.config/darkroom/. You can use this\n”
+         “    option for experimentation without affecting your original library.db.\n”
+         “    If the specified database file doesn't exist, Darkroom will create it.\n”
+         “\n”
+         “    When Darkroom starts, it locks the library to the current user by writing\n”
+         “    the process identifier (PID) to a lock file named FILE.lock next to the\n”
+         “    specified library. If a lock file already exists, Darkroom will exit.\n”
+         “\n”
+         “    :memory: -> Use this option as FILE to keep the database in system memory,\n”
+         “    discarding changes on Darkroom termination.\n”
+         “\n”
+         “--localedir DIR\n”
+         “    Define where Darkroom can find its language-specific text\n”
+         “    strings. The default location depends on your installation.\n”
+         “    Typical locations are /opt/darkroom/share/locale/\n”
+         “    and /usr/share/locale/\n”
+         “\n”
 #ifdef USE_LUA
-         "--luacmd COMMAND\n"
-         "    A string containing lua commands to execute after lua\n"
-         "    initialization. These commands will be run after your “luarc”\n"
-         "    file. If lua is not compiled-in, this option will be accepted\n"
-         "    but won't do anything.\n"
-         "\n"
+         “--luacmd COMMAND\n”
+         “    A string containing lua commands to execute after lua\n”
+         “    initialization. These commands will be run after your “luarc”\n”
+         “    file. If lua is not compiled-in, this option will be accepted\n”
+         “    but won't do anything.\n”
+         “\n”
 #endif
-         "--moduledir DIR\n"
-         "    darktable has a modular structure and organizes its modules as\n"
-         "    shared libraries for loading at runtime.\n"
-         "    This option tells darktable where to look for its shared libraries.\n"
-         "    The default location depends on your installation.\n"
-         "    Typical locations are /opt/darktable/lib64/darktable/\n"
-         "    and /usr/lib64/darktable/\n"
-         "\n"
-         "--noiseprofiles FILE\n"
-         "    Provide a json file that contains camera-specific noise profiles.\n"
-         "    The default location depends on your installation.\n"
-         "    Typical locations are /opt/darktable/share/darktable/noiseprofile.json\n"
-         "    and /usr/share/darktable/noiseprofile.json\n"
-         "\n"
-         "-t, --threads NUM\n"
-         "    Limit number of openmp threads to use in openmp parallel sections\n"
-         "\n"
-         "--tmpdir DIR\n"
-         "    Define where darktable should store its temporary files.\n"
-         "    If this option is not supplied darktable uses the system default.\n"
-         "\n"
-         "-v, --version\n"
-         "    Print darktable version number\n"
+         “--moduledir DIR\n”
+         “    Darkroom has a modular structure and organizes its modules as\n”
+         “    shared libraries for loading at runtime.\n”
+         “    This option tells Darkroom where to look for its shared libraries.\n”
+         “    The default location depends on your installation.\n”
+         “    Typical locations are /opt/darkroom/lib64/darkroom/\n”
+         “    and /usr/lib64/darkroom/\n”
+         “\n”
+         “--noiseprofiles FILE\n”
+         “    Provide a json file that contains camera-specific noise profiles.\n”
+         “    The default location depends on your installation.\n”
+         “    Typical locations are /opt/darkroom/share/darkroom/noiseprofile.json\n”
+         “    and /usr/share/darkroom/noiseprofile.json\n”
+         “\n”
+         “-t, --threads NUM\n”
+         “    Limit number of openmp threads to use in openmp parallel sections\n”
+         “\n”
+         “--tmpdir DIR\n”
+         “    Define where Darkroom should store its temporary files.\n”
+         “    If this option is not supplied Darkroom uses the system default.\n”
+         “\n”
+         “-v, --version\n”
+         “    Print Darkroom version number\n”
          "\n"
 #ifdef _WIN32
          "-h, --help, /?\n"

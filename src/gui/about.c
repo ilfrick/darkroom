@@ -42,9 +42,9 @@ void darktable_show_about_dialog()
   const dt_logo_season_t season = dt_util_get_logo_season();
   char *icon;
   if(season != DT_LOGO_SEASON_NONE)
-    icon = g_strdup_printf("darktable-%d", (int)season);
+    icon = g_strdup_printf("darkroom-%d", (int)season);
   else
-    icon = g_strdup("darktable");
+    icon = g_strdup("darkroom");
   gtk_about_dialog_set_logo_icon_name(GTK_ABOUT_DIALOG(dialog), icon);
   g_free(icon);
 

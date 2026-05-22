@@ -977,9 +977,15 @@ gboolean try_enter(dt_view_t *self)
   dt_image_full_path(img->id, imgfilename, sizeof(imgfilename), &from_cache);
   if(!g_file_test(imgfilename, G_FILE_TEST_IS_REGULAR))
   {
-    dt_control_log(_("image `%s' is currently unavailable"), img->filename);
-    dt_image_cache_read_release(img);
-    return TRUE;
+    if(!(img->flags & DT_IMAGE_HAS_SMART_PREVIEW))
+    {
+      dt_control_log(_("image `%s' is currently unavailable"), img->filename);
+      dt_image_cache_read_release(img);
+      return TRUE;
+    }
+    // original is offline but a smart preview exists — allow opening
+    dt_control_log(_("editing smart preview of `%s' — original file not available"),
+                   img->filename);
   }
   else if(img->load_status != DT_IMAGEIO_OK)
   {
@@ -4963,8 +4969,8 @@ static void _darkroom_display_second_window(dt_develop_t *dev)
 
     _second_window_configure_ppd_dpi(dev);
 
-    gtk_window_set_icon_name(GTK_WINDOW(dev->second_wnd), "darktable");
-    gtk_window_set_title(GTK_WINDOW(dev->second_wnd), _("darktable - darkroom preview"));
+    gtk_window_set_icon_name(GTK_WINDOW(dev->second_wnd), "darkroom");
+    gtk_window_set_title(GTK_WINDOW(dev->second_wnd), _("Darkroom - preview"));
 
 #ifndef GDK_WINDOWING_QUARTZ
     // On macOS, transient_for is implemented via [NSWindow addChildWindow:ordered:],
