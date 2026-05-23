@@ -19,7 +19,7 @@ FROM ubuntu:24.04 AS builder
 
 ARG DARKROOM_VERSION=master
 ARG CMAKE_BUILD_TYPE=Release
-ARG USE_AI=ON
+ARG USE_AI=OFF
 ARG JOBS=4
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -32,7 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libexiv2-dev libgdk-pixbuf-2.0-dev libglib2.0-dev libgmic-dev \
     libgphoto2-dev libgraphicsmagick1-dev libgtk-3-dev libheif-dev \
     libjpeg-dev libjson-glib-dev liblcms2-dev liblensfun-dev \
-    liblua5.4-dev libonnxruntime-dev libopenexr-dev libopenjp2-7-dev \
+    liblua5.4-dev libopenexr-dev libopenjp2-7-dev \
     libosmgpsmap-1.0-dev libpango1.0-dev libpng-dev libportmidi-dev \
     libpotrace-dev libpugixml-dev libraw-dev librsvg2-dev \
     libsqlite3-dev libtiff5-dev libwebp-dev libx11-dev \
@@ -72,7 +72,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcurl3-gnutls libexiv2-27 libglib2.0-0 libgmic1 \
     libgphoto2-6 libgraphicsmagick-q16-3 libgtk-3-0 libheif1 \
     libjpeg8 libjson-glib-1.0-0 liblcms2-2 liblensfun1 \
-    liblua5.4-0 libonnxruntime1.18 libopenexr-3-1-30 libopenjp2-7 \
+    liblua5.4-0 libopenexr-3-1-30 libopenjp2-7 \
     libosmgpsmap-1.0-1 libpng16-16 libportmidi0 libpotrace0 \
     libpugixml1v5 libraw23 librsvg2-2 libsqlite3-0 libtiff6 \
     libwebp7 libx11-6 libxml2 zlib1g libsdl2-2.0-0 \
