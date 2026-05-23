@@ -1,8 +1,15 @@
 # Darkroom – GPU-accelerated photo editor in a container
-# Inspired by linuxserver/darktable-docker
 #
 # Build:
-#   docker build -t darkroom .
+#   docker build -t darkroom -f docker/Dockerfile .
+#
+# Build from a different fork/branch:
+#   docker build -t darkroom -f docker/Dockerfile \
+#     --build-arg DARKROOM_REPO=https://github.com/yourfork/darkroom.git \
+#     --build-arg DARKROOM_BRANCH=mybranch .
+#
+# Run (CPU only):
+#   docker run -p 3000:3000 -v /photos:/photos -v /config:/config darkroom
 #
 # Run (NVIDIA GPU):
 #   docker run --gpus all -e PUID=1000 -e PGID=1000 \
@@ -10,14 +17,12 @@
 #     -v /path/to/photos:/photos \
 #     -v /path/to/config:/config \
 #     darkroom
-#
-# Run (CPU only):
-#   docker run -p 3000:3000 -v /photos:/photos -v /config:/config darkroom
 
 # ─── Stage 1: Build ──────────────────────────────────────────────────────────
 FROM ubuntu:24.04 AS builder
 
-ARG DARKROOM_VERSION=master
+ARG DARKROOM_REPO=https://www.housefz.com/git/ilfrick/darkroom.git
+ARG DARKROOM_BRANCH=master
 ARG CMAKE_BUILD_TYPE=Release
 ARG USE_AI=OFF
 ARG JOBS=4
@@ -41,8 +46,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     opencl-headers ocl-icd-opencl-dev \
     && rm -rf /var/lib/apt/lists/*
 
+RUN git clone --recurse-submodules --depth 1 -b ${DARKROOM_BRANCH} ${DARKROOM_REPO} /src
+
 WORKDIR /src
-COPY . .
 
 RUN cmake -B build -G Ninja \
     -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
