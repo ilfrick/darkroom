@@ -176,6 +176,12 @@ if(USE_AI)
 endif(USE_AI)
 
 #
+# Install print layout templates
+#
+FILE(COPY print_layouts DESTINATION "${DARKTABLE_DATADIR}")
+install(DIRECTORY print_layouts DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/darktable COMPONENT DTApplication)
+
+#
 # Transform darktableconfig.xml into darktablerc
 #
 

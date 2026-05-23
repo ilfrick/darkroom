@@ -1,0 +1,8 @@
+{
+  "name": "Photo Book Page",
+  "description": "Large feature photo with caption strip below, portrait",
+  "cells": [
+    {"x": 0.0238, "y": 0.0168, "w": 0.9524, "h": 0.7000},
+    {"x": 0.0238, "y": 0.7270, "w": 0.9524, "h": 0.2560}
+  ]
+}

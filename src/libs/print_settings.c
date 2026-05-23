@@ -26,6 +26,7 @@
 #include "common/metadata.h"
 #include "common/pdf.h"
 #include "common/printprof.h"
+#include "common/print_layouts.h"
 #include "common/printing.h"
 #include "common/styles.h"
 #include "common/tags.h"
@@ -122,6 +123,9 @@ typedef struct dt_lib_print_settings_t
 
   GList *printer_list;
   dt_pthread_mutex_t printer_list_mutex;
+
+  GtkWidget *layout_template;
+  GList *layouts;
 } dt_lib_print_settings_t;
 
 typedef struct dt_lib_print_job_t
@@ -629,6 +633,21 @@ static int _print_job_run(dt_job_t *job)
   }
 
   return 0;
+}
+
+static void _layout_template_changed(GtkWidget *widget, dt_lib_module_t *self)
+{
+  dt_lib_print_settings_t *ps = self->data;
+
+  const int idx = dt_bauhaus_combobox_get(widget) - 1; // 0 → "None"
+  if(idx < 0) return;
+
+  dt_print_layout_t *layout = g_list_nth_data(ps->layouts, idx);
+  if(!layout) return;
+
+  dt_print_layout_apply(&ps->imgs, layout);
+  ps->has_changed = TRUE;
+  dt_control_queue_redraw_center();
 }
 
 static void _page_new_area_clicked(GtkWidget *widget, dt_lib_module_t *self)
@@ -2486,6 +2505,26 @@ void gui_init(dt_lib_module_t *self)
   gtk_entry_set_alignment(GTK_ENTRY(d->grid_size), 1);
 
 
+  ////////////////////////// LAYOUT TEMPLATES
+
+  d->layouts = dt_print_layouts_load();
+
+  label = dt_ui_section_label_new(C_("section", "layout template"));
+  gtk_box_pack_start(GTK_BOX(self->widget), label, TRUE, TRUE, 0);
+
+  d->layout_template = dt_bauhaus_combobox_new_action(DT_ACTION(self));
+  dt_bauhaus_widget_set_label(d->layout_template, N_("layout template"), N_("template"));
+  dt_bauhaus_combobox_add(d->layout_template, _("none"));
+  for(const GList *l = d->layouts; l; l = g_list_next(l))
+  {
+    const dt_print_layout_t *lt = l->data;
+    dt_bauhaus_combobox_add(d->layout_template, lt->name);
+  }
+  dt_bauhaus_combobox_set(d->layout_template, 0);
+  g_signal_connect(G_OBJECT(d->layout_template), "value-changed",
+                   G_CALLBACK(_layout_template_changed), self);
+  gtk_box_pack_start(GTK_BOX(self->widget), d->layout_template, TRUE, TRUE, 0);
+
   ////////////////////////// PRINTER SETTINGS
 
   // create papers combo as filled when adding printers
@@ -3473,6 +3512,7 @@ void gui_cleanup(dt_lib_module_t *self)
   g_list_free_full(ps->profiles, g_free);
   g_list_free_full(ps->paper_list, free);
   g_list_free_full(ps->media_list, free);
+  dt_print_layouts_free(ps->layouts);
 
   g_free(ps->v_iccprofile);
   g_free(ps->v_piccprofile);

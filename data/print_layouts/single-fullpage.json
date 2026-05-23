@@ -1,0 +1,7 @@
+{
+  "name": "Single Full Page",
+  "description": "One image filling the entire page",
+  "cells": [
+    {"x": 0.001, "y": 0.001, "w": 0.998, "h": 0.998}
+  ]
+}

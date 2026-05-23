@@ -73,6 +73,7 @@ FILE(GLOB SOURCE_FILES
   "common/matrices.c"
   "common/smart_previews.c"
   "common/virtual_copies.c"
+  "common/print_layouts.c"
   "common/metadata.c"
   "common/metadata_export.c"
   "common/mipmap_cache.c"
