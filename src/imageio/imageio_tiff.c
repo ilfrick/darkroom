@@ -419,7 +419,7 @@ dt_imageio_retval_t dt_imageio_open_tiff(dt_image_t *img,
   TIFFGetField(t.tiff, TIFFTAG_PHOTOMETRIC, &photometric);
 
   // Citing the TIFF 6.0 specification for SampleFormat:
-  // A reader would typically treat an image with “undefined” data as
+  // A reader would typically treat an image with "undefined" data as
   // if the field were not present (i.e. as unsigned integer data).
   if(t.sampleformat == SAMPLEFORMAT_VOID)
     t.sampleformat = SAMPLEFORMAT_UINT;

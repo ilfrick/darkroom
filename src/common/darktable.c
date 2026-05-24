@@ -154,83 +154,83 @@ static int usage(const char *argv0)
          darktable_package_version,
          darktable_last_commit_year);
 
-  printf(“Usage:\n”
-         “  darkroom [OPTIONS] [IMAGE_FILE | IMAGE_FOLDER]\n”
-         “\n”
-         “Options:\n”
-         “\n”
-         “--cachedir DIR\n”
-         “    Darkroom keeps a cache of image thumbnails for fast image preview\n”
-         “    and precompiled OpenCL binaries for fast startup. By default the\n”
-         “    cache is located in $HOME/.cache/darkroom/. Multiple thumbnail\n”
-         “    caches may exist in parallel, one for each library file.\n”
-         “\n”
-         “--conf KEY=VALUE\n”
-         “    Temporarily overwrite individual settings on the command line with\n”
-         “    this option - these settings will not be stored in darkroomrc\n”
-         “    on exit.\n”
-         “\n”
-         “--configdir DIR\n”
-         “    Where Darkroom stores user-specific configuration.\n”
-         “    The default location is $HOME/.config/darkroom/\n”
-         “\n”
-         “--datadir DIR\n”
-         “    Define the directory where Darkroom finds its runtime data.\n”
-         “    The default location depends on your installation.\n”
-         “    Typical locations are /opt/darkroom/share/darkroom/ \n”
-         “    and /usr/share/darkroom/\n”
-         “\n”
-         “--library FILE\n”
-         “    Specifies an alternate location for Darkroom's image information database,\n”
-         “    which is stored in an SQLite file by default (library.db) in the directory\n”
-         “    specified by --configdir or $HOME/.config/darkroom/. You can use this\n”
-         “    option for experimentation without affecting your original library.db.\n”
-         “    If the specified database file doesn't exist, Darkroom will create it.\n”
-         “\n”
-         “    When Darkroom starts, it locks the library to the current user by writing\n”
-         “    the process identifier (PID) to a lock file named FILE.lock next to the\n”
-         “    specified library. If a lock file already exists, Darkroom will exit.\n”
-         “\n”
-         “    :memory: -> Use this option as FILE to keep the database in system memory,\n”
-         “    discarding changes on Darkroom termination.\n”
-         “\n”
-         “--localedir DIR\n”
-         “    Define where Darkroom can find its language-specific text\n”
-         “    strings. The default location depends on your installation.\n”
-         “    Typical locations are /opt/darkroom/share/locale/\n”
-         “    and /usr/share/locale/\n”
-         “\n”
+  printf("Usage:\n"
+         "  darkroom [OPTIONS] [IMAGE_FILE | IMAGE_FOLDER]\n"
+         "\n"
+         "Options:\n"
+         "\n"
+         "--cachedir DIR\n"
+         "    Darkroom keeps a cache of image thumbnails for fast image preview\n"
+         "    and precompiled OpenCL binaries for fast startup. By default the\n"
+         "    cache is located in $HOME/.cache/darkroom/. Multiple thumbnail\n"
+         "    caches may exist in parallel, one for each library file.\n"
+         "\n"
+         "--conf KEY=VALUE\n"
+         "    Temporarily overwrite individual settings on the command line with\n"
+         "    this option - these settings will not be stored in darkroomrc\n"
+         "    on exit.\n"
+         "\n"
+         "--configdir DIR\n"
+         "    Where Darkroom stores user-specific configuration.\n"
+         "    The default location is $HOME/.config/darkroom/\n"
+         "\n"
+         "--datadir DIR\n"
+         "    Define the directory where Darkroom finds its runtime data.\n"
+         "    The default location depends on your installation.\n"
+         "    Typical locations are /opt/darkroom/share/darkroom/ \n"
+         "    and /usr/share/darkroom/\n"
+         "\n"
+         "--library FILE\n"
+         "    Specifies an alternate location for Darkroom's image information database,\n"
+         "    which is stored in an SQLite file by default (library.db) in the directory\n"
+         "    specified by --configdir or $HOME/.config/darkroom/. You can use this\n"
+         "    option for experimentation without affecting your original library.db.\n"
+         "    If the specified database file doesn't exist, Darkroom will create it.\n"
+         "\n"
+         "    When Darkroom starts, it locks the library to the current user by writing\n"
+         "    the process identifier (PID) to a lock file named FILE.lock next to the\n"
+         "    specified library. If a lock file already exists, Darkroom will exit.\n"
+         "\n"
+         "    :memory: -> Use this option as FILE to keep the database in system memory,\n"
+         "    discarding changes on Darkroom termination.\n"
+         "\n"
+         "--localedir DIR\n"
+         "    Define where Darkroom can find its language-specific text\n"
+         "    strings. The default location depends on your installation.\n"
+         "    Typical locations are /opt/darkroom/share/locale/\n"
+         "    and /usr/share/locale/\n"
+         "\n"
 #ifdef USE_LUA
-         “--luacmd COMMAND\n”
-         “    A string containing lua commands to execute after lua\n”
-         “    initialization. These commands will be run after your “luarc”\n”
-         “    file. If lua is not compiled-in, this option will be accepted\n”
-         “    but won't do anything.\n”
-         “\n”
+         "--luacmd COMMAND\n"
+         "    A string containing lua commands to execute after lua\n"
+         "    initialization. These commands will be run after your "luarc"\n"
+         "    file. If lua is not compiled-in, this option will be accepted\n"
+         "    but won't do anything.\n"
+         "\n"
 #endif
-         “--moduledir DIR\n”
-         “    Darkroom has a modular structure and organizes its modules as\n”
-         “    shared libraries for loading at runtime.\n”
-         “    This option tells Darkroom where to look for its shared libraries.\n”
-         “    The default location depends on your installation.\n”
-         “    Typical locations are /opt/darkroom/lib64/darkroom/\n”
-         “    and /usr/lib64/darkroom/\n”
-         “\n”
-         “--noiseprofiles FILE\n”
-         “    Provide a json file that contains camera-specific noise profiles.\n”
-         “    The default location depends on your installation.\n”
-         “    Typical locations are /opt/darkroom/share/darkroom/noiseprofile.json\n”
-         “    and /usr/share/darkroom/noiseprofile.json\n”
-         “\n”
-         “-t, --threads NUM\n”
-         “    Limit number of openmp threads to use in openmp parallel sections\n”
-         “\n”
-         “--tmpdir DIR\n”
-         “    Define where Darkroom should store its temporary files.\n”
-         “    If this option is not supplied Darkroom uses the system default.\n”
-         “\n”
-         “-v, --version\n”
-         “    Print Darkroom version number\n”
+         "--moduledir DIR\n"
+         "    Darkroom has a modular structure and organizes its modules as\n"
+         "    shared libraries for loading at runtime.\n"
+         "    This option tells Darkroom where to look for its shared libraries.\n"
+         "    The default location depends on your installation.\n"
+         "    Typical locations are /opt/darkroom/lib64/darkroom/\n"
+         "    and /usr/lib64/darkroom/\n"
+         "\n"
+         "--noiseprofiles FILE\n"
+         "    Provide a json file that contains camera-specific noise profiles.\n"
+         "    The default location depends on your installation.\n"
+         "    Typical locations are /opt/darkroom/share/darkroom/noiseprofile.json\n"
+         "    and /usr/share/darkroom/noiseprofile.json\n"
+         "\n"
+         "-t, --threads NUM\n"
+         "    Limit number of openmp threads to use in openmp parallel sections\n"
+         "\n"
+         "--tmpdir DIR\n"
+         "    Define where Darkroom should store its temporary files.\n"
+         "    If this option is not supplied Darkroom uses the system default.\n"
+         "\n"
+         "-v, --version\n"
+         "    Print Darkroom version number\n"
          "\n"
 #ifdef _WIN32
          "-h, --help, /?\n"
