@@ -97,9 +97,9 @@ RUN ln -s /opt/darkroom/bin/darktable /usr/local/bin/darkroom \
     && ldconfig
 
 # KasmVNC autostart: launch darkroom on container start
-RUN mkdir -p /defaults/autostart
-COPY docker/kasmvnc-autostart.sh /defaults/autostart/darkroom.sh
-RUN chmod +x /defaults/autostart/darkroom.sh
+# /defaults/autostart is a script file in the base image, not a directory
+COPY docker/kasmvnc-autostart.sh /defaults/autostart
+RUN chmod +x /defaults/autostart
 
 # XDG data dirs so darkroom finds its share files
 ENV XDG_DATA_DIRS=/opt/darkroom/share:/usr/share:/usr/local/share
