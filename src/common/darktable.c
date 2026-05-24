@@ -203,7 +203,7 @@ static int usage(const char *argv0)
 #ifdef USE_LUA
          "--luacmd COMMAND\n"
          "    A string containing lua commands to execute after lua\n"
-         "    initialization. These commands will be run after your "luarc"\n"
+         "    initialization. These commands will be run after your 'luarc'\n"
          "    file. If lua is not compiled-in, this option will be accepted\n"
          "    but won't do anything.\n"
          "\n"
