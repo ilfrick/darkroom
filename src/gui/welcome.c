@@ -847,7 +847,7 @@ static dt_welcome_screen_t *_build_welcome_screen(void)
 
     /* xgettext: %s is a URL; keep <a href="%s"> and </a> unchanged */
     gchar *text = g_strdup_printf(_("Read the <a href=\"%s\">user manual</a> "
-                                    "to learn more and make the most of darktable."),
+                                    "to learn more and make the most of Darkroom."),
                                   manual_url);
     dt_welcome_screen_page_add_paragraph(ws, page_idx, text, TRUE);
     g_free(text);
@@ -861,7 +861,7 @@ static dt_welcome_screen_t *_build_welcome_screen(void)
      TRUE);
 
   dt_welcome_screen_page_add_paragraph
-    (ws, page_idx, _("Happy editing with darktable!"), TRUE);
+    (ws, page_idx, _("Happy editing with Darkroom!"), TRUE);
 
   return ws;
 }

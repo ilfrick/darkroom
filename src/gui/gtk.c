@@ -1566,18 +1566,18 @@ int dt_gui_gtk_init(dt_gui_gtk_t *gui)
   gtk_widget_show(help_root_menu);
 
   GtkWidget *help_menu = gtk_menu_new();
-  GtkWidget *help_manual = gtk_menu_item_new_with_label(C_("menu", "darktable Manual"));
+  GtkWidget *help_manual = gtk_menu_item_new_with_label(C_("menu", "Darkroom Manual"));
   gtk_menu_shell_append(GTK_MENU_SHELL(help_menu), help_manual);
   gtk_widget_show(help_manual);
   dt_gui_add_help_link(help_manual, "document_root");
   g_signal_connect(G_OBJECT(help_manual), "activate",
                    G_CALLBACK(dt_gui_show_help), help_manual);
 
-  GtkWidget *help_home = gtk_menu_item_new_with_label(C_("menu", "darktable Homepage"));
+  GtkWidget *help_home = gtk_menu_item_new_with_label(C_("menu", "Darkroom Homepage"));
   gtk_menu_shell_append(GTK_MENU_SHELL(help_menu), help_home);
   gtk_widget_show(help_home);
   g_signal_connect(G_OBJECT(help_home), "activate",
-                   G_CALLBACK(_open_url), "https://www.darktable.org");
+                   G_CALLBACK(_open_url), "https://github.com/ilfrick/darkroom");
 
   gtk_menu_item_set_submenu(GTK_MENU_ITEM(help_root_menu), help_menu);
 
