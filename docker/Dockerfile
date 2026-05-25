@@ -85,8 +85,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsecret-1-0 lua5.4 \
     # OpenCL runtime (CPU fallback via Portable CL)
     pocl-opencl-icd \
-    # NVIDIA OpenCL / CUDA interop — loaded at runtime via host driver mount
-    && rm -rf /var/lib/apt/lists/*
+    # GTK pixbuf loaders + MIME database (fixes SVG theme icon loading)
+    libgdk-pixbuf2.0-bin shared-mime-info \
+    # openbox-xdg-autostart dependency
+    python3-xdg \
+    && rm -rf /var/lib/apt/lists/* \
+    # Regenerate GDK pixbuf loaders cache so SVG icons load correctly
+    && gdk-pixbuf-query-loaders --update-cache \
+    # Regenerate shared-mime-info database
+    && update-mime-database /usr/share/mime
 
 # Copy compiled Darkroom from build stage
 COPY --from=builder /opt/darkroom /opt/darkroom
