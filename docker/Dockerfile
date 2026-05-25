@@ -91,7 +91,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-xdg \
     && rm -rf /var/lib/apt/lists/* \
     # Regenerate GDK pixbuf loaders cache so SVG icons load correctly
-    && gdk-pixbuf-query-loaders --update-cache \
+    # Binary is not in $PATH on Ubuntu 24.04 — use full path
+    && (/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders --update-cache || true) \
     # Regenerate shared-mime-info database
     && update-mime-database /usr/share/mime
 
