@@ -25,6 +25,8 @@
 #include "common/film.h"
 #include "common/map_locations.h"
 #include "common/metadata.h"
+#include "common/act_on.h"
+#include "common/tags.h"
 #include "common/utility.h"
 #include "control/conf.h"
 #include "control/control.h"
@@ -48,6 +50,8 @@ DT_MODULE(3)
 #define MAX_RULES 10
 
 #define PARAM_STRING_SIZE 256 // FIXME: is this enough !?
+
+#define DT_QUICK_COLLECTION_TAG "darkroom|quick_collection"
 
 typedef struct _datetime_range_t
 {
@@ -96,6 +100,7 @@ typedef struct dt_lib_collect_t
   gboolean inited;
 
   GtkWidget *history_box;
+  GtkWidget *quick_collection_btn;
 } dt_lib_collect_t;
 
 typedef struct dt_lib_collect_params_rule_t
@@ -3800,12 +3805,85 @@ GtkWidget *gui_tool_box(dt_lib_module_t *self)
   return sortb;
 }
 
+static void _quick_collection_toggle(GtkWidget *widget, dt_lib_module_t *self)
+{
+  guint tagid = 0;
+  dt_tag_new(DT_QUICK_COLLECTION_TAG, &tagid);
+  if(!tagid) return;
+
+  GList *imgs = dt_act_on_get_images(FALSE, TRUE, FALSE);
+  if(!imgs) return;
+
+  const dt_imgid_t first = GPOINTER_TO_INT(imgs->data);
+  GList *attached = NULL;
+  dt_tag_get_attached(first, &attached, TRUE);
+  gboolean has_tag = FALSE;
+  for(GList *t = attached; t; t = g_list_next(t))
+  {
+    const dt_tag_t *tag = t->data;
+    if(tag->id == tagid) { has_tag = TRUE; break; }
+  }
+  dt_tag_free_result(&attached);
+
+  if(has_tag)
+    dt_tag_detach_images(tagid, imgs, TRUE);
+  else
+    dt_tag_attach_images(tagid, imgs, TRUE);
+
+  g_list_free(imgs);
+  dt_collection_update_query(darktable.collection,
+                             DT_COLLECTION_CHANGE_RELOAD,
+                             DT_COLLECTION_PROP_TAG, NULL);
+}
+
+static void _quick_collection_show(GtkWidget *widget, dt_lib_module_t *self)
+{
+  dt_conf_set_int("plugins/lighttable/collect/num_rules", 1);
+  dt_conf_set_int("plugins/lighttable/collect/item0", DT_COLLECTION_PROP_TAG);
+  dt_conf_set_int("plugins/lighttable/collect/mode0", DT_LIB_COLLECT_MODE_AND);
+  dt_conf_set_string("plugins/lighttable/collect/string0", DT_QUICK_COLLECTION_TAG);
+
+  dt_lib_collect_t *d = self->data;
+  _lib_collect_update_params(d);
+  dt_collection_update_query(darktable.collection,
+                             DT_COLLECTION_CHANGE_NEW_QUERY,
+                             DT_COLLECTION_PROP_TAG, NULL);
+}
+
 void gui_init(dt_lib_module_t *self)
 {
   dt_lib_collect_t *d = self->data = calloc(1, sizeof(dt_lib_collect_t));
 
   self->widget = dt_gui_vbox();
   dt_gui_add_class(self->widget, "dt_spacing_sw");
+
+  // Quick Collection row: [★ Quick Collection] [B]
+  {
+    GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+    GtkWidget *show_btn = gtk_button_new_with_label(_("★ Quick Collection"));
+    gtk_widget_set_tooltip_text(show_btn,
+      _("show Quick Collection\n"
+        "press B to add/remove selected images"));
+    gtk_widget_set_hexpand(show_btn, TRUE);
+    g_signal_connect(G_OBJECT(show_btn), "clicked",
+                     G_CALLBACK(_quick_collection_show), self);
+
+    GtkWidget *toggle_btn = gtk_button_new_with_label("B");
+    gtk_widget_set_tooltip_text(toggle_btn,
+      _("toggle selected images in/out of Quick Collection"));
+    g_signal_connect(G_OBJECT(toggle_btn), "clicked",
+                     G_CALLBACK(_quick_collection_toggle), self);
+    d->quick_collection_btn = toggle_btn;
+
+    gtk_box_pack_start(GTK_BOX(hbox), show_btn, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(hbox), toggle_btn, FALSE, FALSE, 0);
+    dt_gui_box_add(self->widget, hbox);
+
+    dt_action_t *ac = dt_action_define(DT_ACTION(self), NULL,
+                                       N_("quick collection"),
+                                       toggle_btn, &dt_action_def_button);
+    dt_shortcut_register(ac, 0, 0, GDK_KEY_b, 0);
+  }
 
   d->active_rule = 0;
   d->nb_rules = 0;

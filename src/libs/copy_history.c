@@ -46,6 +46,7 @@ typedef struct dt_lib_copy_history_t
   GtkWidget *copy_button, *discard_button, *load_button, *write_button;
   GtkWidget *copy_parts_button;
   GtkWidget *compress_button;
+  GtkWidget *sync_button;
 } dt_lib_copy_history_t;
 
 const char *name(dt_lib_module_t *self)
@@ -95,6 +96,16 @@ void gui_update(dt_lib_module_t *self)
 
   gtk_widget_set_sensitive(GTK_WIDGET(d->paste), can_paste);
   gtk_widget_set_sensitive(GTK_WIDGET(d->paste_parts), can_paste);
+
+  gtk_widget_set_sensitive(GTK_WIDGET(d->sync_button), act_on_mult);
+  if(act_on_mult)
+  {
+    gchar *label = g_strdup_printf(_("sync (%d)"), nbimgs - 1);
+    gtk_button_set_label(GTK_BUTTON(d->sync_button), label);
+    g_free(label);
+  }
+  else
+    gtk_button_set_label(GTK_BUTTON(d->sync_button), _("sync edits"));
 }
 
 static void write_button_clicked(GtkWidget *widget, dt_lib_module_t *self)
@@ -254,6 +265,18 @@ static void paste_parts_button_clicked(GtkWidget *widget, gpointer user_data)
   dt_control_paste_parts_history(imgs);
 }
 
+static void sync_button_clicked(GtkWidget *widget, dt_lib_module_t *self)
+{
+  const dt_imgid_t src = dt_act_on_get_main_image();
+  if(!dt_is_valid_imgid(src)) return;
+  if(!dt_history_copy(src)) return;
+
+  GList *imgs = dt_act_on_get_images(TRUE, TRUE, FALSE);
+  if(imgs) dt_control_paste_history(imgs);
+
+  dt_lib_gui_queue_update(self);
+}
+
 static void _image_selection_changed_callback(gpointer instance, dt_lib_module_t *self)
 {
   dt_lib_gui_queue_update(self);
@@ -319,6 +342,13 @@ void gui_init(dt_lib_module_t *self)
                                   GDK_KEY_v, GDK_CONTROL_MASK);
   gtk_widget_set_sensitive(d->paste, FALSE);
   gtk_grid_attach(grid, d->paste, 3, line++, 3, 1);
+
+  d->sync_button = dt_action_button_new
+    (self, N_("sync edits"), sync_button_clicked, self,
+     _("copy develop settings from the primary image\nand apply them to all other selected images"),
+     0, 0);
+  gtk_widget_set_sensitive(d->sync_button, FALSE);
+  gtk_grid_attach(grid, d->sync_button, 0, line++, 6, 1);
 
   d->compress_button = dt_action_button_new
     (self, N_("compress history"), compress_button_clicked, self,

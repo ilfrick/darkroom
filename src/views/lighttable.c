@@ -335,6 +335,16 @@ static gboolean _preview_get_state(dt_view_t *self)
   return lib->preview_state;
 }
 
+static void _culling_advance(dt_view_t *self)
+{
+  dt_library_t *lib = self->data;
+  if(lib->preview_state)
+    dt_culling_key_move(lib->preview, DT_CULLING_MOVE_RIGHT);
+  else
+    dt_culling_key_move(lib->culling, DT_CULLING_MOVE_RIGHT);
+  gtk_widget_queue_draw(dt_ui_center(darktable.gui->ui));
+}
+
 static dt_imgid_t _culling_get_selection(dt_view_t *self)
 {
   const dt_library_t *lib = self->data;
@@ -647,6 +657,7 @@ void init(dt_view_t *self)
   darktable.view_manager->proxy.lighttable.get_culling_restricted_state = _culling_restricted_get_state;
   darktable.view_manager->proxy.lighttable.set_culling_restricted_state = _culling_restricted_set_state;
   darktable.view_manager->proxy.lighttable.get_culling_selection = _culling_get_selection;
+  darktable.view_manager->proxy.lighttable.culling_advance = _culling_advance;
   darktable.view_manager->proxy.lighttable.view = self;
   darktable.view_manager->proxy.lighttable.change_offset = _lighttable_change_offset;
 

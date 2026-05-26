@@ -289,6 +289,10 @@ static float _action_process_rating(gpointer target,
     GList *imgs = dt_act_on_get_images(FALSE, TRUE, FALSE);
     dt_ratings_apply_on_list(imgs, element, TRUE);
 
+    if(dt_view_get_current() == DT_VIEW_LIGHTTABLE
+       && dt_conf_get_bool("plugins/lighttable/culling/auto_advance"))
+      dt_view_lighttable_culling_advance(darktable.view_manager);
+
     // if we are in darkroom we show a message as there might be no
     // other indication.
     if(dt_view_get_current() == DT_VIEW_DARKROOM

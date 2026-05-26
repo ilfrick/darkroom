@@ -1357,6 +1357,12 @@ gboolean dt_view_lighttable_preview_state(dt_view_manager_t *vm)
     return FALSE;
 }
 
+void dt_view_lighttable_culling_advance(dt_view_manager_t *vm)
+{
+  if(vm->proxy.lighttable.module && vm->proxy.lighttable.culling_advance)
+    vm->proxy.lighttable.culling_advance(vm->proxy.lighttable.view);
+}
+
 void dt_view_lighttable_set_preview_state(dt_view_manager_t *vm,
                                           const gboolean state,
                                           const gboolean sticky,
