@@ -1036,6 +1036,8 @@ if(CARGO)
     DEPENDS "${CMAKE_SOURCE_DIR}/crates/darkroom-core/Cargo.toml"
             "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/lib.rs"
             "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/exposure.rs"
+            "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/colorcontrast.rs"
+            "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/vibrance.rs"
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     COMMENT "Building Rust crate darkroom-core"
     VERBATIM

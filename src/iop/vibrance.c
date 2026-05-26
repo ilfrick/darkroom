@@ -29,6 +29,7 @@
 #include "gui/accelerators.h"
 #include "gui/gtk.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 #include <gtk/gtk.h>
 #include <inttypes.h>
 
@@ -108,23 +109,9 @@ void process(dt_iop_module_t *self, dt_dev_pixelpipe_iop_t *piece, const void *c
   const float *const restrict in = (float *)ivoid;
   float *const restrict out = (float *)ovoid;
 
-  const float amount = (d->amount * 0.01);
-  const int npixels = roi_out->height * roi_out->width;
-
-  DT_OMP_FOR()
-  for(int k = 0; k < 4 * npixels; k += 4)
-  {
-    /* saturation weight 0 - 1 */
-    const float sw = sqrtf((in[k + 1] * in[k + 1]) + (in[k + 2] * in[k + 2])) / 256.0f;
-    const float ls = 1.0f - ((amount * sw) * .25f);
-    const float ss = 1.0f + (amount * sw);
-    const dt_aligned_pixel_t weights = { ls, ss, ss, 1.0f };
-    DT_OMP_SIMD(aligned(in, out : 16))
-    for(int c = 0; c < 4; c++)
-    {
-      out[k + c] = in[k + c] * weights[c];
-    }
-  }
+  const float amount = d->amount * 0.01f;
+  const size_t npixels = (size_t)roi_out->height * roi_out->width;
+  darkroom_vibrance_process(in, out, npixels, amount);
 }
 
 

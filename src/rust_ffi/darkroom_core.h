@@ -16,6 +16,32 @@ extern "C" {
 #endif
 
 /*
+ * Color-contrast IOP — affine transform on Lab a/b channels.
+ *
+ * Replaces the two OMP loops in src/iop/colorcontrast.c::process().
+ * unbound != 0: no clamping; unbound == 0: a/b clamped to [-128, 128].
+ */
+void darkroom_colorcontrast_process(const float *in_buf,
+                                    float *out_buf,
+                                    size_t npixels,
+                                    float a_steepness,
+                                    float a_offset,
+                                    float b_steepness,
+                                    float b_offset,
+                                    int unbound);
+
+/*
+ * Vibrance IOP — saturation-weighted chroma boost.
+ *
+ * Replaces the OMP loop in src/iop/vibrance.c::process().
+ * amount must be pre-scaled by 0.01 (done in C commit_params).
+ */
+void darkroom_vibrance_process(const float *in_buf,
+                               float *out_buf,
+                               size_t npixels,
+                               float amount);
+
+/*
  * Exposure IOP pixel loop.
  *
  * Replaces the inner loop in src/iop/exposure.c::process():

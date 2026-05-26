@@ -26,6 +26,7 @@
 #include "gui/accelerators.h"
 #include "gui/gtk.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 
 #include <assert.h>
 #include <gtk/gtk.h>
@@ -186,38 +187,10 @@ void process(dt_iop_module_t *self,
   float *const restrict out = DT_IS_ALIGNED((float *const)ovoid);
   const size_t npixels = (size_t)roi_out->width * roi_out->height;
 
-  const dt_aligned_pixel_t slope = { 1.0f, d->a_steepness, d->b_steepness, 1.0f };
-  const dt_aligned_pixel_t offset = { 0.0f, d->a_offset, d->b_offset, 0.0f };
-  const dt_aligned_pixel_t lowlimit = { -FLT_MAX, -128.0f, -128.0f, -FLT_MAX };
-  const dt_aligned_pixel_t highlimit = { FLT_MAX, 128.0f, 128.0f, FLT_MAX };
-
-  if(d->unbound)
-  {
-    DT_OMP_FOR()
-    for(size_t k = 0; k < (size_t)4 * npixels; k += 4)
-    {
-      dt_aligned_pixel_t res;
-      for_each_channel(c)
-      {
-        res[c] = (in[k + c] * slope[c]) + offset[c];
-      }
-      copy_pixel_nontemporal(out + k, res);
-    }
-  }
-  else
-  {
-
-    DT_OMP_FOR()
-    for(size_t k = 0; k < npixels; k ++)
-    {
-      // the inner per-pixel loop needs to be declared in a separate
-      // vectorizable function to convince the compiler that it
-      // doesn't need to check for overlap or misalignment of the
-      // buffers for *every* pixel, which actually makes the code
-      // slower than not vectorizing....
-      clamped_scaling(out + 4*k, in + 4*k, slope, offset, lowlimit, highlimit);
-    }
-  }
+  darkroom_colorcontrast_process(in, out, npixels,
+                                 d->a_steepness, d->a_offset,
+                                 d->b_steepness, d->b_offset,
+                                 d->unbound);
 }
 
 #ifdef HAVE_OPENCL
