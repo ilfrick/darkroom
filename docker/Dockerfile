@@ -89,6 +89,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgdk-pixbuf2.0-bin shared-mime-info \
     # openbox-xdg-autostart dependency
     python3-xdg \
+    # newer xkb-data silences KasmVNC keysym warnings (XF86Camera*, XF86NextElement…)
+    xkb-data \
     && rm -rf /var/lib/apt/lists/* \
     # Regenerate GDK pixbuf loaders cache so SVG icons load correctly
     # Binary is not in $PATH on Ubuntu 24.04 — use full path
@@ -103,6 +105,11 @@ COPY --from=builder /opt/darkroom /opt/darkroom
 RUN ln -s /opt/darkroom/bin/darktable /usr/local/bin/darkroom \
     && ln -s /opt/darkroom/bin/darktable-cli /usr/local/bin/darkroom-cli \
     && ldconfig
+
+# cont-init: runs as root before the desktop session; creates config dirs
+# with the correct ownership so the container user (PUID/PGID) can write them
+COPY docker/cont-init-darkroom.sh /etc/cont-init.d/10-darkroom-dirs
+RUN chmod +x /etc/cont-init.d/10-darkroom-dirs
 
 # KasmVNC autostart: launch darkroom on container start
 # /defaults/autostart is a script file in the base image, not a directory
