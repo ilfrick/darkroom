@@ -108,8 +108,8 @@ RUN ln -s /opt/darkroom/bin/darktable /usr/local/bin/darkroom \
 
 # cont-init: runs as root before the desktop session; creates config dirs
 # with the correct ownership so the container user (PUID/PGID) can write them
-COPY docker/cont-init-darkroom.sh /etc/cont-init.d/10-darkroom-dirs
-RUN chmod +x /etc/cont-init.d/10-darkroom-dirs
+COPY docker/cont-init-darkroom.sh /etc/cont-init.d/50-darkroom-dirs
+RUN chmod +x /etc/cont-init.d/50-darkroom-dirs
 
 # KasmVNC autostart: launch darkroom on container start
 # /defaults/autostart is a script file in the base image, not a directory
