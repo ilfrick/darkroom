@@ -1,0 +1,24 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/darkroom-sys",
+  "crates/darkroom-core",
+  "crates/darkroom-db",
+  "crates/darkroom-ui",
+  "crates/darkroom",
+]
+
+[workspace.dependencies]
+anyhow       = "1"
+rayon        = "1"
+rusqlite     = { version = "0.31", features = ["bundled"] }
+tracing      = "0.1"
+darkroom-sys  = { path = "crates/darkroom-sys" }
+darkroom-core = { path = "crates/darkroom-core" }
+darkroom-db   = { path = "crates/darkroom-db" }
+darkroom-ui   = { path = "crates/darkroom-ui" }
+
+[profile.release]
+opt-level = 3
+lto       = "thin"
+strip     = true

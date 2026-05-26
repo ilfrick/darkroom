@@ -1,0 +1,10 @@
+[package]
+name = "darkroom-core"
+version = "0.1.0"
+edition = "2021"
+description = "Safe Rust image processing pipeline — Phase 1 target"
+
+[dependencies]
+darkroom-sys = { workspace = true }
+anyhow       = { workspace = true }
+rayon        = { workspace = true }

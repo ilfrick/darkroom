@@ -30,14 +30,14 @@ x-darkroom-base: &darkroom-base
       USE_AI: "OFF"
       JOBS: "4"
   environment:
-    PUID: ${PUID:-1000}
-    PGID: ${PGID:-1000}
+    PUID: ${PUID}
+    PGID: ${PGID}
     TZ: ${TZ:-Europe/Rome}
     DARKROOM_CONFIGDIR: /config/darkroom
     DARKROOM_CACHEDIR: /config/cache
   volumes:
-    - ${PHOTOS_DIR:-~/Pictures}:/photos
-    - ${CONFIG_DIR:-~/.config/darkroom-docker}:/config
+    - ${PHOTOS_DIR}:/photos
+    - ${CONFIG_DIR}:/config
   ports:
     - "3000:3000"   # KasmVNC HTTP  → open http://localhost:3000
     - "3001:3001"   # KasmVNC HTTPS → open https://localhost:3001

@@ -1,5 +1,7 @@
 build*/
 obj*/
+/target/
+Cargo.lock
 *~
 *.pot
 *.mo
