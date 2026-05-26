@@ -40,6 +40,7 @@
 #include "gui/presets.h"
 #include "gui/color_picker_proxy.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 
 #define exposure2white(x) exp2f(-(x))
 #define white2exposure(x) -dt_log2f(fmaxf(1e-20f, x))
@@ -553,14 +554,8 @@ void process(dt_iop_module_t *self,
 
   const float *const restrict in = (float*)i;
   float *const restrict out = (float*)o;
-  const float black = d->black;
-  const float scale = d->scale;
   const size_t npixels = (size_t)roi_out->width * roi_out->height;
-  DT_OMP_FOR_SIMD(aligned(in, out : 64))
-  for(size_t k = 0; k < ch * npixels; k++)
-  {
-    out[k] = (in[k] - black) * scale;
-  }
+  darkroom_exposure_process(in, out, npixels, (size_t)ch, d->black, d->scale);
   for(int k = 0; k < 3; k++)
     piece->pipe->dsc.processed_maximum[k] *= d->scale;
 }

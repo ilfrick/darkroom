@@ -4,6 +4,11 @@ version = "0.1.0"
 edition = "2021"
 description = "Safe Rust image processing pipeline — Phase 1 target"
 
+[lib]
+# cdylib  → libdarkroom_core.so  linked into lib_darktable (C side)
+# rlib    → used by darkroom-db, darkroom-ui, darkroom (Rust side)
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 darkroom-sys = { workspace = true }
 anyhow       = { workspace = true }

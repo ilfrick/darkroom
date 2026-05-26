@@ -1012,6 +1012,49 @@ if(USE_XMLLINT)
 endif(USE_XMLLINT)
 
 #
+# Rust: darkroom-core cdylib
+# Produces target/{release,debug}/libdarkroom_core.so, linked into lib_darktable
+# so every IOP module can call its extern "C" entry points.
+#
+find_program(CARGO cargo)
+if(CARGO)
+  if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(_rust_profile "debug")
+    set(_cargo_flags "")
+  else()
+    set(_rust_profile "release")
+    set(_cargo_flags "--release")
+  endif()
+
+  set(_darkroom_core_lib
+      "${CMAKE_SOURCE_DIR}/target/${_rust_profile}/libdarkroom_core.so")
+
+  add_custom_command(
+    OUTPUT  "${_darkroom_core_lib}"
+    COMMAND "${CARGO}" build ${_cargo_flags} -p darkroom-core
+            --manifest-path "${CMAKE_SOURCE_DIR}/Cargo.toml"
+    DEPENDS "${CMAKE_SOURCE_DIR}/crates/darkroom-core/Cargo.toml"
+            "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/lib.rs"
+            "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/exposure.rs"
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    COMMENT "Building Rust crate darkroom-core"
+    VERBATIM
+  )
+  add_custom_target(darkroom_core_rust ALL DEPENDS "${_darkroom_core_lib}")
+
+  add_library(darkroom_core SHARED IMPORTED GLOBAL)
+  set_target_properties(darkroom_core PROPERTIES
+      IMPORTED_LOCATION "${_darkroom_core_lib}"
+  )
+  add_dependencies(darkroom_core darkroom_core_rust)
+
+  install(FILES "${_darkroom_core_lib}"
+          DESTINATION "${CMAKE_INSTALL_LIBDIR}/darktable")
+else()
+  message(WARNING "cargo not found — darkroom-core Rust library will not be built")
+endif()
+
+#
 # build libdarktable
 #
 add_library(lib_darktable SHARED ${DARKTABLE_BINDIR}/preferences_gen.h ${DARKTABLE_BINDIR}/version_gen.c ${SOURCES})
@@ -1052,6 +1095,12 @@ endif()
 target_link_libraries(lib_darktable PUBLIC ${STATIC_LIBS})
 target_link_libraries(lib_darktable PRIVATE whereami)
 target_link_libraries(lib_darktable PUBLIC ${LIBS})
+
+if(CARGO AND TARGET darkroom_core)
+  add_dependencies(lib_darktable darkroom_core_rust)
+  target_link_libraries(lib_darktable PRIVATE darkroom_core)
+  target_include_directories(lib_darktable PRIVATE "${CMAKE_SOURCE_DIR}/src")
+endif()
 
 unset(LIBS)
 unset(STATIC_LIBS)

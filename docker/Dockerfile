@@ -44,7 +44,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxml2-dev libxml2-utils zlib1g-dev libsdl2-dev \
     libsecret-1-dev po4a python3-jsonschema xsltproc perl \
     opencl-headers ocl-icd-opencl-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Rust stable — needed so CMake can invoke cargo to build darkroom-core
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    | sh -s -- -y --default-toolchain stable --profile minimal \
+    && rm -rf /root/.rustup/toolchains/*/share/doc
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 RUN git clone --recurse-submodules --depth 1 -b ${DARKROOM_BRANCH} ${DARKROOM_REPO} /src
 
