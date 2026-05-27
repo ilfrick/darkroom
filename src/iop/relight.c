@@ -33,6 +33,7 @@
 #include "develop/imageop_gui.h"
 #include "gui/presets.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 
 DT_MODULE_INTROSPECTION(1, dt_iop_relight_params_t)
 
@@ -127,23 +128,7 @@ void process(dt_iop_module_t *self,
   const float c = (data->width / 10.0f) / 2.0f;   // Width
 
   const size_t npixels = (size_t)roi_out->width * roi_out->height;
-  const float ev = data->ev;
-
-  DT_OMP_FOR()
-  for(size_t k = 0; k < npixels; k++)
-  {
-    const float *const restrict in = ((float *)ivoid) + 4*k;
-    float *const restrict out = ((float *)ovoid) + 4*k;
-    dt_aligned_pixel_t pixel;
-    copy_pixel(pixel, in);
-    const float lightness = pixel[0] / 100.0f;
-    const float x = -1.0f + (lightness * 2.0f);
-    float gauss = GAUSS(a, b, c, x);
-    float relight = exp2f(ev * CLIP(gauss));
-    pixel[0] = 100.0f * CLIP(lightness * relight);
-    copy_pixel_nontemporal(out, pixel);
-  }
-  dt_omploop_sfence();
+  darkroom_relight_process((const float *)ivoid, (float *)ovoid, npixels, data->ev, data->center, data->width);
 }
 
 

@@ -42,6 +42,33 @@ void darkroom_vibrance_process(const float *in_buf,
                                float amount);
 
 /*
+ * Relight IOP — gaussian-weighted L-channel boost in Lab colorspace.
+ *
+ * Replaces the OMP loop in src/iop/relight.c::process().
+ * GAUSS(a=1, b, c, x) = expf(-(x-b)^2 / c^2)  [no 2× in denominator]
+ */
+void darkroom_relight_process(const float *in_buf,
+                              float *out_buf,
+                              size_t npixels,
+                              float ev,
+                              float center,
+                              float width);
+
+/*
+ * Colorize IOP — replace a/b with fixed Lab color, blend L from input.
+ *
+ * Replaces the OMP loop in src/iop/colorize.c::process().
+ * Alpha is always written as 0 (matching C copy_pixel({0,a,b,0})).
+ */
+void darkroom_colorize_process(const float *in_buf,
+                               float *out_buf,
+                               size_t npixels,
+                               float color_l,
+                               float color_a,
+                               float color_b,
+                               float mix);
+
+/*
  * Velvia IOP — film-emulation saturation boost in RGB colorspace.
  *
  * Replaces the OMP loop in src/iop/velvia.c::process().

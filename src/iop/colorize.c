@@ -26,6 +26,7 @@
 #include "gui/color_picker_proxy.h"
 #include "gui/gtk.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 #ifdef GDK_WINDOWING_QUARTZ
 #include "osx/osx.h"
 #endif
@@ -160,17 +161,8 @@ void process(dt_iop_module_t *self,
   const float a = d->a;
   const float b = d->b;
   const float mix = d->mix;
-  const float Lmlmix = L - (mix * 100.0f) / 2.0f;
   const size_t npixels = (size_t)roi_out->height * roi_out->width;
-  const dt_aligned_pixel_t color = { 0.0f, a, b, 0.0f };
-
-  DT_OMP_FOR()
-  for(size_t k = 0; k < npixels; k++)
-  {
-    const float mixed_L = Lmlmix + in[4*k + 0] * mix;
-    copy_pixel(out + 4*k, color);
-    out[4*k] = mixed_L;
-  }
+  darkroom_colorize_process(in, out, npixels, L, a, b, mix);
 }
 
 #ifdef HAVE_OPENCL

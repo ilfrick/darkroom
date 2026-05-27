@@ -5,7 +5,9 @@
 
 pub mod colisa;
 pub mod colorcontrast;
+pub mod colorize;
 pub mod exposure;
+pub mod relight;
 pub mod velvia;
 pub mod vibrance;
 
