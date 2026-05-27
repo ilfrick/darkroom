@@ -129,6 +129,88 @@ void darkroom_colisa_process(const float *in_buf,
                              float saturation);
 
 /*
+ * Split-toning IOP — shadow/highlight colorization via HSL.
+ *
+ * Replaces the OMP loop in src/iop/splittoning.c::process().
+ * compress must be pre-scaled: (data->compress / 110.0f) / 2.0f
+ */
+void darkroom_splittoning_process(const float *in_buf,
+                                  float *out_buf,
+                                  size_t npixels,
+                                  float shadow_hue,
+                                  float shadow_saturation,
+                                  float highlight_hue,
+                                  float highlight_saturation,
+                                  float balance,
+                                  float compress);
+
+/*
+ * Negadoctor IOP — film negative scan inversion.
+ *
+ * Replaces the OMP loop in src/iop/negadoctor.c::process().
+ * dmin, wb_high, offset each point to 4 floats (dt_aligned_pixel_t).
+ * black, gamma, soft_clip, soft_clip_comp, exposure are scalar floats.
+ */
+void darkroom_negadoctor_process(const float *in_buf,
+                                 float *out_buf,
+                                 size_t npixels,
+                                 const float *dmin,
+                                 const float *wb_high,
+                                 const float *offset,
+                                 float black,
+                                 float gamma,
+                                 float soft_clip,
+                                 float soft_clip_comp,
+                                 float exposure);
+
+/*
+ * Channel-mixer IOP — linear RGB and HSL channel remapping.
+ *
+ * Replaces the process_rgb/gray/hsl_v1/hsl_v2 loops in channelmixer.c::process().
+ * hsl_matrix and rgb_matrix each point to 9 floats (3×3, row-major).
+ * operation_mode: 0=RGB, 1=GRAY, 2=HSL_V1, 3=HSL_V2.
+ */
+void darkroom_channelmixer_process(const float *in_buf,
+                                   float *out_buf,
+                                   size_t npixels,
+                                   const float *hsl_matrix,
+                                   const float *rgb_matrix,
+                                   int operation_mode);
+
+/*
+ * Lowlight IOP — scotopic vision simulation in Lab colorspace.
+ *
+ * Replaces the OMP loop in src/iop/lowlight.c::process().
+ * lut points to d->lut (DT_IOP_LOWLIGHT_LUT_RES = 65536 floats).
+ */
+void darkroom_lowlight_process(const float *in_buf,
+                               float *out_buf,
+                               size_t npixels,
+                               float blueness,
+                               const float *lut);
+
+/*
+ * Tone-curve IOP — 3-channel Lab LUT with four autoscale modes.
+ *
+ * Replaces the OMP loop in src/iop/tonecurve.c::process().
+ * table_l/a/b each point to d->table[ch_L/a/b] (65536 floats each).
+ * unbounded_coeffs_l: 3 floats (d->unbounded_coeffs_L).
+ * unbounded_coeffs_ab: 12 floats (d->unbounded_coeffs_ab).
+ * autoscale_ab: 0=MANUAL, 1=AUTOMATIC, 2=AUTOMATIC_XYZ, 3=AUTOMATIC_RGB.
+ */
+void darkroom_tonecurve_process(const float *in_buf,
+                                float *out_buf,
+                                size_t npixels,
+                                const float *table_l,
+                                const float *table_a,
+                                const float *table_b,
+                                const float *unbounded_coeffs_l,
+                                const float *unbounded_coeffs_ab,
+                                int autoscale_ab,
+                                int unbound_ab,
+                                int preserve_colors);
+
+/*
  * Exposure IOP pixel loop.
  *
  * Replaces the inner loop in src/iop/exposure.c::process():

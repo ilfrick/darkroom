@@ -30,6 +30,7 @@
 #include "gui/gtk.h"
 #include "gui/presets.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 #include <inttypes.h>
 #include <math.h>
 #include <stdlib.h>
@@ -129,58 +130,8 @@ void process(dt_iop_module_t *self,
     return;
   dt_iop_lowlight_data_t *d = piece->data;
 
-  // empiric coefficient
-  const float coeff = 0.5f;
-  const float threshold = 0.01f;
-
-  // scotopic white, blue saturated
-  dt_aligned_pixel_t Lab_sw = { 100.0f, 0, -d->blueness };
-  dt_aligned_pixel_t XYZ_sw;
-
-  dt_Lab_to_XYZ(Lab_sw, XYZ_sw);
-
-  const float *lut = d->lut;
   const size_t npixels = (size_t)roi_out->height * roi_out->width;
-
-  DT_OMP_FOR()
-  for(size_t k = 0; k < (size_t)npixels; k++)
-  {
-    const float *const in = (float *)i + 4 * k;
-    float *const out = (float *)o + 4 * k;
-    dt_aligned_pixel_t XYZ, XYZ_s;
-    float V;
-
-    dt_Lab_to_XYZ(in, XYZ);
-
-    // calculate scotopic luminance
-    if(XYZ[0] > threshold)
-    {
-      // normal flow
-      V = XYZ[1] * (1.33f * (1.0f + (XYZ[1] + XYZ[2]) / XYZ[0]) - 1.68f);
-    }
-    else
-    {
-      // low red flow, avoids "snow" on dark noisy areas
-      V = XYZ[1] * (1.33f * (1.0f + (XYZ[1] + XYZ[2]) / threshold) - 1.68f);
-    }
-
-    // scale using empiric coefficient and fit inside limits
-//    V = fminf(1.0f, fmaxf(0.0f, coeff * V));
-    V = CLIP(coeff * V);
-
-    // blending coefficient from curve
-    const float w = lookup(lut, in[0] / 100.f);
-
-    for_each_channel(c)
-      XYZ_s[c] = V * XYZ_sw[c];
-
-    for_each_channel(c)
-      XYZ[c] = w * XYZ[c] + (1.0f - w) * XYZ_s[c];
-
-    dt_aligned_pixel_t res;
-    dt_XYZ_to_Lab(XYZ, res);
-    copy_pixel_nontemporal(out, res);
-  }
+  darkroom_lowlight_process((const float *)i, (float *)o, npixels, d->blueness, d->lut);
 }
 
 #ifdef HAVE_OPENCL

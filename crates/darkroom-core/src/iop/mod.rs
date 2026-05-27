@@ -3,13 +3,18 @@
 //! Each IOP from src/iop/*.c will become a struct in this module
 //! implementing `IopProcess`. Migration order follows RUST_MIGRATION_PLAN.md.
 
+pub mod channelmixer;
 pub mod colisa;
 pub mod colorcontrast;
 pub mod colorcorrection;
 pub mod colorize;
 pub mod exposure;
 pub mod levels;
+pub mod lowlight;
+pub mod negadoctor;
 pub mod relight;
+pub mod splittoning;
+pub mod tonecurve;
 pub mod velvia;
 pub mod vibrance;
 

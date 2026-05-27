@@ -32,6 +32,7 @@
 #include "gui/presets.h"
 #include "gui/color_picker_proxy.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 
 #include <glib.h>
 #include <math.h>
@@ -331,31 +332,10 @@ void process(dt_iop_module_t *const self, dt_dev_pixelpipe_iop_t *const piece,
   const float *const restrict in = (float *)ivoid;
   float *const restrict out = (float *)ovoid;
 
-  dt_aligned_pixel_t gamma;
-  dt_aligned_pixel_t black;
-  dt_aligned_pixel_t exposure;
-  dt_aligned_pixel_t soft_clip;
-  dt_aligned_pixel_t soft_clip_comp;
-  for_each_channel(c)
-  {
-    gamma[c] = d->gamma;
-    black[c] = d->black;
-    exposure[c] = d->exposure;
-    soft_clip[c] = d->soft_clip;
-    soft_clip_comp[c] = d->soft_clip_comp;
-  }
-  // Unpack vectors one by one with extra pragmas to be sure the compiler understands they can be vectorized
-  const float *const restrict Dmin = DT_IS_ALIGNED_PIXEL(d->Dmin);
-  const float *const restrict wb_high = DT_IS_ALIGNED_PIXEL(d->wb_high);
-  const float *const restrict offset = DT_IS_ALIGNED_PIXEL(d->offset);
-
-  DT_OMP_FOR()
-  for(size_t k = 0; k < (size_t)roi_out->height * roi_out->width * 4; k += 4)
-  {
-    const float *const restrict pix_in = in + k;
-    float *const restrict pix_out = out + k;
-    _process_pixel(pix_in, pix_out, Dmin, wb_high, offset, black, exposure, gamma, soft_clip, soft_clip_comp);
-  }
+  const size_t npixels = (size_t)roi_out->height * roi_out->width;
+  darkroom_negadoctor_process(in, out, npixels,
+                              d->Dmin, d->wb_high, d->offset,
+                              d->black, d->gamma, d->soft_clip, d->soft_clip_comp, d->exposure);
 }
 
 

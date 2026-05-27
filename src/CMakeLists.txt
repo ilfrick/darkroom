@@ -1044,6 +1044,12 @@ if(CARGO)
             "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/colorize.rs"
             "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/colorcorrection.rs"
             "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/levels.rs"
+            "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/color.rs"
+            "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/splittoning.rs"
+            "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/negadoctor.rs"
+            "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/channelmixer.rs"
+            "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/lowlight.rs"
+            "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/tonecurve.rs"
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     COMMENT "Building Rust crate darkroom-core"
     VERBATIM

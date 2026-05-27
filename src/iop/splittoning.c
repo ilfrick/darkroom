@@ -32,6 +32,7 @@
 #include "gui/presets.h"
 #include "gui/color_picker_proxy.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 #include <assert.h>
 #include <gtk/gtk.h>
 #include <inttypes.h>
@@ -168,43 +169,10 @@ void process(dt_iop_module_t *self, dt_dev_pixelpipe_iop_t *piece, const void *c
   const float highlight_saturation = data->highlight_saturation;
   const float balance = data->balance;
 
-  DT_OMP_FOR()
-  for(int k = 0; k < 4 * npixels; k += 4)
-  {
-    float h, s, l;
-    rgb2hsl(in+k, &h, &s, &l);
-    if(l < balance - compress)
-    {
-      dt_aligned_pixel_t mixrgb;
-      hsl2rgb(mixrgb, shadow_hue, shadow_saturation, l);
-
-      const float ra = CLIP((balance - compress - l) * 2.0f);
-      const float la = (1.0f - ra);
-
-      dt_aligned_pixel_t toned;
-      for_each_channel(c,aligned(in,out))
-        toned[c] = CLIP(in[k+c] * la + mixrgb[c] * ra);
-      copy_pixel_nontemporal(out + k, toned);
-    }
-    else if(l > balance + compress)
-    {
-      dt_aligned_pixel_t mixrgb;
-      hsl2rgb(mixrgb, highlight_hue, highlight_saturation, l);
-
-      const float ra = CLIP((l - (balance + compress)) * 2.0f);
-      const float la = (1.0f - ra);
-
-      dt_aligned_pixel_t toned;
-      for_each_channel(c,aligned(in,out))
-        toned[c] = CLIP(in[k+c] * la + mixrgb[c] * ra);
-      copy_pixel_nontemporal(out + k, toned);
-    }
-    else
-    {
-      copy_pixel_nontemporal(out + k, in +k);
-    }
-  }
-  dt_omploop_sfence(); // ensure that nontemporal writes flush to RAM before continuing
+  darkroom_splittoning_process(in, out, (size_t)npixels,
+                               shadow_hue, shadow_saturation,
+                               highlight_hue, highlight_saturation,
+                               balance, compress);
 }
 
 #ifdef HAVE_OPENCL

@@ -38,6 +38,7 @@
 #include "gui/color_picker_proxy.h"
 #include "gui/accelerators.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 #include "libs/colorpicker.h"
 
 #define DT_GUI_CURVE_EDITOR_INSET DT_PIXEL_APPLY_DPI(1)
@@ -389,16 +390,6 @@ void process(dt_iop_module_t *self,
             // trouble flag has been updated
 
   const dt_iop_tonecurve_data_t *const restrict d = piece->data;
-  const dt_iop_order_iccprofile_info_t *const work_profile
-    = dt_ioppr_add_profile_info_to_list(self->dev, DT_COLORSPACE_PROPHOTO_RGB, "",
-                                        INTENT_PERCEPTUAL);
-  const float xm_L = 1.0f / d->unbounded_coeffs_L[0];
-  const float xm_ar = 1.0f / d->unbounded_coeffs_ab[0];
-  const float xm_al = 1.0f - 1.0f / d->unbounded_coeffs_ab[3];
-  const float xm_br = 1.0f / d->unbounded_coeffs_ab[6];
-  const float xm_bl = 1.0f - 1.0f / d->unbounded_coeffs_ab[9];
-  const float low_approximation = d->table[0][(int)(0.01f * 0x10000ul)];
-
   const size_t npixels = (size_t)roi_out->width * roi_out->height;
   const int autoscale_ab = d->autoscale_ab;
   const int unbound_ab = d->unbound_ab;
@@ -406,97 +397,10 @@ void process(dt_iop_module_t *self,
   const float *const restrict in = (float*)i;
   float *const restrict out = (float*)o;
 
-  DT_OMP_FOR()
-  for(int k = 0; k < 4*npixels; k += 4)
-  {
-    const float L_in = in[k] / 100.0f;
-
-    out[k+0] = (L_in < xm_L) ? d->table[ch_L][CLAMP((int)(L_in * 0x10000ul), 0, 0xffff)]
-      : dt_iop_eval_exp(d->unbounded_coeffs_L, L_in);
-
-    if(autoscale_ab == DT_S_SCALE_MANUAL)
-    {
-      const float a_in = (in[k+1] + 128.0f) / 256.0f;
-      const float b_in = (in[k+2] + 128.0f) / 256.0f;
-
-      if(unbound_ab == 0)
-      {
-        // old style handling of a/b curves: only lut lookup with clamping
-        out[k+1] = d->table[ch_a][CLAMP((int)(a_in * 0x10000ul), 0, 0xffff)];
-        out[k+2] = d->table[ch_b][CLAMP((int)(b_in * 0x10000ul), 0, 0xffff)];
-      }
-      else
-      {
-        // new style handling of a/b curves: lut lookup with two-sided extrapolation;
-        // mind the x-axis reversal for the left-handed side
-        out[k+1] = (a_in > xm_ar)
-          ? dt_iop_eval_exp(d->unbounded_coeffs_ab, a_in)
-          : ((a_in < xm_al) ? dt_iop_eval_exp(d->unbounded_coeffs_ab + 3, 1.0f - a_in)
-             : d->table[ch_a][CLAMP((int)(a_in * 0x10000ul), 0, 0xffff)]);
-        out[k+2] = (b_in > xm_br)
-          ? dt_iop_eval_exp(d->unbounded_coeffs_ab + 6, b_in)
-          : ((b_in < xm_bl) ? dt_iop_eval_exp(d->unbounded_coeffs_ab + 9, 1.0f - b_in)
-             : d->table[ch_b][CLAMP((int)(b_in * 0x10000ul), 0, 0xffff)]);
-      }
-    }
-    else if(autoscale_ab == DT_S_SCALE_AUTOMATIC)
-    {
-      // in Lab: correct compressed Luminance for saturation:
-      if(L_in > 0.01f)
-      {
-        out[k+1] = in[k+1] * out[k] / in[k+0];
-        out[k+2] = in[k+2] * out[k] / in[k+0];
-      }
-      else
-      {
-        out[k+1] = in[k+1] * low_approximation;
-        out[k+2] = in[k+2] * low_approximation;
-      }
-    }
-    else if(autoscale_ab == DT_S_SCALE_AUTOMATIC_XYZ)
-    {
-      dt_aligned_pixel_t XYZ;
-      dt_Lab_to_XYZ(in + k, XYZ);
-      for(int c=0;c<3;c++)
-        XYZ[c] = (XYZ[c] < xm_L)
-          ? d->table[ch_L][CLAMP((int)(XYZ[c] * 0x10000ul), 0, 0xffff)]
-          : dt_iop_eval_exp(d->unbounded_coeffs_L, XYZ[c]);
-      dt_XYZ_to_Lab(XYZ, out + k);
-    }
-    else if(autoscale_ab == DT_S_SCALE_AUTOMATIC_RGB)
-    {
-      dt_aligned_pixel_t rgb = {0, 0, 0};
-      dt_Lab_to_prophotorgb(in + k, rgb);
-      if(d->preserve_colors == DT_RGB_NORM_NONE)
-      {
-        for(int c = 0; c < 3; c++)
-        {
-          rgb[c] = (rgb[c] < xm_L)
-            ? d->table[ch_L][CLAMP((int)(rgb[c] * 0x10000ul), 0, 0xffff)]
-            : dt_iop_eval_exp(d->unbounded_coeffs_L, rgb[c]);
-        }
-      }
-      else
-      {
-        float ratio = 1.f;
-        const float lum = dt_rgb_norm(rgb, d->preserve_colors, work_profile);
-        if(lum > 0.f)
-        {
-          const float curve_lum = (lum < xm_L)
-            ? d->table[ch_L][CLAMP((int)(lum * 0x10000ul), 0, 0xffff)]
-            : dt_iop_eval_exp(d->unbounded_coeffs_L, lum);
-          ratio = curve_lum / lum;
-        }
-        for(size_t c = 0; c < 3; c++)
-        {
-          rgb[c] = (ratio * rgb[c]);
-        }
-      }
-      dt_prophotorgb_to_Lab(rgb, out + k);
-    }
-
-    out[k+3] = in[k+3];
-  }
+  darkroom_tonecurve_process(in, out, npixels,
+                             d->table[ch_L], d->table[ch_a], d->table[ch_b],
+                             d->unbounded_coeffs_L, d->unbounded_coeffs_ab,
+                             autoscale_ab, unbound_ab, d->preserve_colors);
 }
 
 static const struct

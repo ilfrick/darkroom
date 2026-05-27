@@ -29,6 +29,7 @@
 #include "gui/gtk.h"
 #include "gui/presets.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 
 #include <assert.h>
 #include <gtk/gtk.h>
@@ -365,23 +366,10 @@ void process(dt_iop_module_t *self, dt_dev_pixelpipe_iop_t *piece, const void *c
              void *const ovoid, const dt_iop_roi_t *const roi_in, const dt_iop_roi_t *const roi_out)
 {
   const dt_iop_channelmixer_data_t *data = piece->data;
-  switch(data->operation_mode)
-  {
-    case OPERATION_MODE_RGB:
-      process_rgb(piece, (const float *const restrict)ivoid, (float *const restrict)ovoid, roi_out);
-      break;
-    case OPERATION_MODE_GRAY:
-      process_gray(piece, (const float *const restrict)ivoid, (float *const restrict)ovoid, roi_out);
-      break;
-    case OPERATION_MODE_HSL_V1:
-      process_hsl_v1(piece, (const float *const restrict)ivoid, (float *const restrict)ovoid, roi_out);
-      break;
-    case OPERATION_MODE_HSL_V2:
-      process_hsl_v2(piece, (const float *const restrict)ivoid, (float *const restrict)ovoid, roi_out);
-      break;
-    default:
-      break;
-  }
+  const size_t npixels = (size_t)roi_out->width * roi_out->height;
+  darkroom_channelmixer_process((const float *)ivoid, (float *)ovoid, npixels,
+                                data->hsl_matrix, data->rgb_matrix,
+                                (int)data->operation_mode);
 }
 
 #ifdef HAVE_OPENCL
