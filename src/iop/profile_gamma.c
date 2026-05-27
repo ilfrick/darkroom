@@ -31,6 +31,7 @@
 #include "gui/presets.h"
 #include "gui/color_picker_proxy.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 #include <assert.h>
 #include <math.h>
 #include <stdlib.h>
@@ -255,65 +256,15 @@ void process(dt_iop_module_t *self, dt_dev_pixelpipe_iop_t *piece, const void *c
 {
   dt_iop_profilegamma_data_t *data = piece->data;
 
-  const int ch = piece->colors;
-
-  switch(data->mode)
-  {
-    case PROFILEGAMMA_LOG:
-    {
-      const float grey = data->grey_point / 100.0f;
-
-      /** The log2(x) -> -INF when x -> 0
-      * thus very low values (noise) will get even lower, resulting in noise negative amplification,
-      * which leads to pepper noise in shadows. To avoid that, we need to clip values that are noise for sure.
-      * Using 16 bits RAW data, the black value (known by rawspeed for every manufacturer) could be used as a threshold.
-      * However, at this point of the pixelpipe, the RAW levels have already been corrected and everything can happen with black levels
-      * in the exposure module. So we define the threshold as the first non-null 16 bit integer
-      */
-      const float noise = powf(2.0f, -16.0f);
-
-      DT_OMP_FOR()
-      for(size_t k = 0; k < (size_t)ch * roi_out->width * roi_out->height; k++)
-      {
-        float tmp = ((const float *)ivoid)[k] / grey;
-        if(tmp < noise) tmp = noise;
-        tmp = (fastlog2(tmp) - data->shadows_range) / (data->dynamic_range);
-
-        if(tmp < noise)
-        {
-          ((float *)ovoid)[k] = noise;
-        }
-        else
-        {
-          ((float *)ovoid)[k] = tmp;
-        }
-      }
-      break;
-    }
-
-    case PROFILEGAMMA_GAMMA:
-    {
-      DT_OMP_FOR()
-      for(int k = 0; k < roi_out->height; k++)
-      {
-        const float *in = ((float *)ivoid) + (size_t)ch * k * roi_out->width;
-        float *out = ((float *)ovoid) + (size_t)ch * k * roi_out->width;
-
-        for(int j = 0; j < roi_out->width; j++, in += ch, out += ch)
-        {
-          for(int i = 0; i < 3; i++)
-          {
-            // use base curve for values < 1, else use extrapolation.
-            if(in[i] < 1.0f)
-              out[i] = data->table[CLAMP((int)(in[i] * 0x10000ul), 0, 0xffff)];
-            else
-              out[i] = dt_iop_eval_exp(data->unbounded_coeffs, in[i]);
-          }
-        }
-      }
-      break;
-    }
-  }
+  darkroom_profile_gamma_process(
+      (const float *)ivoid, (float *)ovoid,
+      (size_t)(roi_out->width * roi_out->height),
+      (int)data->mode,
+      data->grey_point / 100.0f,
+      data->dynamic_range,
+      data->shadows_range,
+      data->table,
+      data->unbounded_coeffs);
 
   if(piece->pipe->mask_display & DT_DEV_PIXELPIPE_DISPLAY_MASK)
     dt_iop_alpha_copy(ivoid, ovoid, roi_out->width, roi_out->height);

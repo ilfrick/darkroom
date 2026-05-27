@@ -29,6 +29,7 @@
 #include "gui/accelerators.h"
 #include "gui/gtk.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 #include <gtk/gtk.h>
 #include <inttypes.h>
 
@@ -453,52 +454,14 @@ void process(dt_iop_module_t *self,
   // filter width depends on world space (i.e. reverse wd norm and roi->scale, as well as buffer input to
   // pixelpipe iscale)
   const double filtermul = piece->iscale / (roi_out->scale * wd);
-  const float fib1 = 34.0f, fib2 = 21.0f;
-  const float fib1div2 = fib1 / fib2;
   const double scale = roi_out->scale;	// is only used in double expressions, so avoid conversion
-  const double fib2inv = 1.0 / fib2;
 
-  DT_OMP_FOR()
-  for(int j = 0; j < roi_out->height; j++)
-  {
-    float *in = ((float *)ivoid) + (size_t)4 * roi_out->width * j;
-    float *out = ((float *)ovoid) + (size_t)4 * roi_out->width * j;
-    const double wy = (roi_out->y + j) / scale;
-    const double y = wy / wd;
-    // y: normalized to shorter side of image, so with pixel aspect = 1.
-
-    for(int i = 0; i < roi_out->width; i++)
-    {
-      // calculate x, y in a resolution independent way:
-      // wx,wy: worldspace in full image pixel coords:
-      const double wx = (roi_out->x + i) / scale;
-      // x: normalized to shorter side of image, so with pixel aspect = 1.
-      const double x = wx / wd;
-      float noise = 0.0;
-      if(filter)
-      {
-        // if zoomed out a lot, use rank-1 lattice downsampling
-        for(int l = 0; l < fib2; l++)
-        {
-          float px = l / fib2, py = l * fib1div2;
-          py -= (int)py;
-          float dx = px * filtermul, dy = py * filtermul;
-          noise += fib2inv * _simplex_2d_noise(x + dx + hash, y + dy, zoom);
-        }
-      }
-      else
-      {
-        noise = _simplex_2d_noise(x + hash, y, zoom);
-      }
-
-      out[0] = in[0] + dt_lut_lookup_2d_1c(data->grain_lut, (noise * strength) * GRAIN_LIGHTNESS_STRENGTH_SCALE, in[0] / 100.0f);
-      out[1] = in[1];
-      out[2] = in[2];
-
-      out += 4;
-      in += 4;
-    }
-  }
+  darkroom_grain_process(
+      (const float *)ivoid, (float *)ovoid,
+      roi_out->x, roi_out->y, roi_out->width, roi_out->height,
+      strength, zoom, wd, scale,
+      hash, filter, filtermul,
+      data->grain_lut);
 }
 
 void commit_params(dt_iop_module_t *self, dt_iop_params_t *p1, dt_dev_pixelpipe_t *pipe,

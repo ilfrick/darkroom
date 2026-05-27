@@ -37,6 +37,7 @@
 #include "gui/gtk.h"
 #include "gui/presets.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 
 DT_MODULE_INTROSPECTION(1, dt_iop_graduatednd_params_t)
 
@@ -788,109 +789,11 @@ void process(dt_iop_module_t *self,
   const dt_aligned_pixel_t color = { data->color[0], data->color[1], data->color[2], data->color[3] };
   const dt_aligned_pixel_t color1 = { data->color1[0], data->color1[1], data->color1[2], data->color1[3] };
 
-  if(density > 0)
-  {
-    DT_OMP_FOR()
-    for(int y = 0; y < height; y++)
-    {
-      const size_t k = (size_t)4 * width * y;
-      const float *const restrict in = (float *)ivoid + k;
-      float *const restrict out = (float *)ovoid + k;
-
-      float length = (length_base - (iy + y) * cosv_hh_inv) * filter_hardness;
-      const dt_aligned_pixel_t counts = { 0.0f, 1.0f, 2.0f, 3.0f };
-
-      // process pixels four at a time so that the compiler can
-      // vectorize the density computation
-      for(int x = 0; x+3 < width; x += 4)
-      {
-        dt_aligned_pixel_t curr_density;
-        dt_aligned_pixel_t lengths;
-        for_four_channels(i)
-        {
-          lengths[i] = length + counts[i] * length_inc;
-          curr_density[i] = _compute_density(density, lengths[i]);
-        }
-        for(int i = 0; i < 4; i++)
-        {
-          dt_aligned_pixel_t res;	// the compiler will optimize this into a register
-          for_each_channel(l, aligned(in : 16))
-          {
-            res[l] = in[4*(x+i)+l] / (color[l] + color1[l] * curr_density[i]);
-          }
-          // use streaming writes to eliminate the memory reads from loading cache lines
-          copy_pixel_nontemporal(out + 4*(x+i), res);
-        }
-        length += 4 * length_inc;
-      }
-      // handle the left-over pixels
-      for(int x = width & ~3; x < width; x++)
-      {
-        const float curr_density = _compute_density(density, length);
-        dt_aligned_pixel_t res;	// the compiler will optimize this into a register
-        for_each_channel(l, aligned(in : 16))
-        {
-          res[l] = in[4*x+l] / (color[l] + color1[l] * curr_density);
-        }
-        // use streaming writes to eliminate the memory reads from loading cache lines
-        copy_pixel_nontemporal(out + 4*x, res);
-        length += length_inc;
-      }
-    }
-    // ensure that the nontemporal writes have finished before continuing
-    dt_omploop_sfence();
-  }
-  else
-  {
-    DT_OMP_FOR()
-    for(int y = 0; y < height; y++)
-    {
-      const size_t k = (size_t)4 * width * y;
-      const float *const restrict in = (float *)ivoid + k;
-      float *const restrict out = (float *)ovoid + k;
-      float length = (length_base - (iy + y) * cosv_hh_inv) * filter_hardness;
-      const dt_aligned_pixel_t counts = { 0.0f, 1.0f, 2.0f, 3.0f };
-
-      // process pixels four at a time so that the compiler can
-      // vectorize the density computation
-      for(int x = 0; x+3 < width; x += 4)
-      {
-        dt_aligned_pixel_t curr_density;
-        dt_aligned_pixel_t lengths;
-        for_four_channels(i)
-        {
-          lengths[i] = -(length + counts[i] * length_inc);
-          curr_density[i] = _compute_density(-density, lengths[i]);
-        }
-        for(int i = 0; i < 4; i++)
-        {
-          dt_aligned_pixel_t res;	// the compiler will optimize this into a register
-          for_each_channel(l, aligned(in : 16))
-          {
-            res[l] = in[4*(x+i)+l] * (color[l] + color1[l] * curr_density[i]);
-          }
-          // use streaming writes to eliminate the memory reads from loading cache lines
-          copy_pixel_nontemporal(out + 4*(x+i), res);
-        }
-        length += 4*length_inc;
-      }
-      // handle the left-over pixels
-      for(int x = width & ~3; x < width; x++)
-      {
-        const float curr_density = _compute_density(-density, -length);
-        dt_aligned_pixel_t res;	// the compiler will optimize this into a register
-        for_each_channel(l, aligned(in : 16))
-        {
-          res[l] = in[4*x+l] * (color[l] + color1[l] * curr_density);
-        }
-        // use streaming writes to eliminate the memory reads from loading cache lines
-        copy_pixel_nontemporal(out + 4*x, res);
-        length += length_inc;
-      }
-    }
-    // ensure that the nontemporal writes have finished before continuing
-    dt_omploop_sfence();
-  }
+  darkroom_graduatednd_process(
+      (const float *)ivoid, (float *)ovoid,
+      width, height, density,
+      length_base, length_inc, cosv_hh_inv, filter_hardness, iy,
+      color, color1);
 
   if(piece->pipe->mask_display & DT_DEV_PIXELPIPE_DISPLAY_MASK)
     dt_iop_alpha_copy(ivoid, ovoid, roi_out->width, roi_out->height);

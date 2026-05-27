@@ -1050,6 +1050,10 @@ if(CARGO)
             "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/channelmixer.rs"
             "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/lowlight.rs"
             "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/tonecurve.rs"
+            "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/primaries.rs"
+            "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/profile_gamma.rs"
+            "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/graduatednd.rs"
+            "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/grain.rs"
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     COMMENT "Building Rust crate darkroom-core"
     VERBATIM

@@ -211,6 +211,82 @@ void darkroom_tonecurve_process(const float *in_buf,
                                 int preserve_colors);
 
 /*
+ * Primaries IOP — linear RGB color matrix adjustment.
+ *
+ * Replaces the OMP loop in src/iop/primaries.c::process().
+ * matrix points to dt_colormatrix_t (float[4][4] = 16 floats, row-major).
+ * dt_apply_transposed_color_matrix: out[r] = Σ matrix[c][r] * in[c] for c=0..2
+ */
+void darkroom_primaries_process(const float *in_buf,
+                                float *out_buf,
+                                size_t npixels,
+                                const float *matrix);
+
+/*
+ * Profile-gamma IOP — logarithmic or gamma LUT tone mapping.
+ *
+ * Replaces the OMP loops in src/iop/profile_gamma.c::process().
+ * mode: 0=LOG (all ch*npixels elements), 1=GAMMA (channels 0..2 only).
+ * grey = data->grey_point / 100.0f (LOG mode only).
+ * table: 65536 floats (GAMMA mode); unbounded_coeffs: 3 floats (GAMMA mode).
+ */
+void darkroom_profile_gamma_process(const float *in_buf,
+                                    float *out_buf,
+                                    size_t npixels,
+                                    int mode,
+                                    float grey,
+                                    float dynamic_range,
+                                    float shadows_range,
+                                    const float *table,
+                                    const float *unbounded_coeffs);
+
+/*
+ * Graduated ND filter IOP — exponential density gradient.
+ *
+ * Replaces the OMP loops in src/iop/graduatednd.c::process().
+ * Geometry scalars must be pre-computed by C caller (see source for formulas).
+ * density > 0: divides; density < 0: multiplies (negated length).
+ * color / color1 each point to 4 floats (dt_aligned_pixel_t).
+ */
+void darkroom_graduatednd_process(const float *in_buf,
+                                  float *out_buf,
+                                  int width,
+                                  int height,
+                                  float density,
+                                  float length_base,
+                                  float length_inc,
+                                  float cosv_hh_inv,
+                                  float filter_hardness,
+                                  int iy,
+                                  const float *color,
+                                  const float *color1);
+
+/*
+ * Grain IOP — photographic film grain via simplex noise on L channel.
+ *
+ * Replaces the OMP loop in src/iop/grain.c::process() (non-filter path only).
+ * grain_lut: 128×128 floats from data->grain_lut; if NULL, built from midtones_bias.
+ * strength = data->strength / 100.0f
+ * zoom = (1.0 + 8*data->scale/100) / 800.0
+ * wd = fminf(piece->buf_in.width, piece->buf_in.height)
+ * hash = _hash_string(filename) % max(roi->width*0.3, 1)
+ */
+void darkroom_grain_process(const float *in_buf,
+                            float *out_buf,
+                            int roi_x,
+                            int roi_y,
+                            int width,
+                            int height,
+                            float strength,
+                            double zoom,
+                            double wd,
+                            double scale,
+                            int hash,
+                            int filter,
+                            double filtermul,
+                            const float *grain_lut);
+
+/*
  * Exposure IOP pixel loop.
  *
  * Replaces the inner loop in src/iop/exposure.c::process():

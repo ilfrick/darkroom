@@ -21,6 +21,7 @@
 #include "develop/imageop.h"
 #include "develop/imageop_gui.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 
 #include <gtk/gtk.h>
 #include <stdlib.h>
@@ -137,15 +138,9 @@ void process(dt_iop_module_t *self,
   dt_colormatrix_t matrix;
   _calculate_adjustment_matrix(params, pipe_work_profile, matrix);
 
-  DT_OMP_FOR(shared(matrix))
-  for(size_t k = 0; k < 4 * roi_out->width * roi_out->height; k += 4)
-  {
-    const float *const restrict in = ((const float *)ivoid) + k;
-    float *const restrict out = ((float *)ovoid) + k;
-
-    dt_apply_transposed_color_matrix(in, matrix, out);
-    out[3] = in[3];
-  }
+  darkroom_primaries_process((const float *)ivoid, (float *)ovoid,
+                             (size_t)(roi_out->width * roi_out->height),
+                             (const float *)matrix);
 }
 
 #ifdef HAVE_OPENCL
