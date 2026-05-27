@@ -32,6 +32,7 @@
 #include "gui/accelerators.h"
 #include "gui/gtk.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 
 #include <gtk/gtk.h>
 #include <inttypes.h>
@@ -147,54 +148,9 @@ void process(dt_iop_module_t *self,
                                         ivoid, ovoid, roi_in, roi_out))
     return;
   const dt_iop_velvia_data_t *const data = piece->data;
-
   const float strength = data->strength / 100.0f;
-
-  // Apply velvia saturation
-  if(strength <= 0.0)
-    dt_iop_image_copy_by_size(ovoid, ivoid, roi_out->width, roi_out->height, 4);
-  else
-  {
-    const size_t npixels = (size_t)roi_out->width * roi_out->height;
-    const float bias = data->bias;
-
-    DT_OMP_FOR()
-    for(size_t k = 0; k < npixels; k++)
-    {
-      const float *const in = (const float *const)ivoid + 4 * k;
-      float *const out = (float *const)ovoid + 4 * k;
-
-      // calculate vibrance, and apply boost velvia saturation at least saturated pixels
-      float pmax = max3f(in);            // max value in RGB set
-      float pmin = min3f(in);            // min value in RGB set
-      float plum = (pmax + pmin) / 2.0f; // pixel luminocity
-      float psat = (plum <= 0.5f) ? (pmax - pmin) / (1e-5f + pmax + pmin)
-                                  : (pmax - pmin) / (1e-5f + MAX(0.0f, 2.0f - pmax - pmin));
-
-      float pweight
-          = CLAMPS(((1.0f - (1.5f * psat)) + ((1.0f + (fabsf(plum - 0.5f) * 2.0f)) * (1.0f - bias)))
-                       / (1.0f + (1.0f - bias)),
-                   0.0f, 1.0f);              // The weight of pixel
-      float saturation = strength * pweight; // So lets calculate the final effect of filter on pixel
-
-      // Apply velvia saturation values
-      dt_aligned_pixel_t chan;
-      copy_pixel(chan, in);
-      // the compiler can use permute or shuffle instructions provided
-      // we include all four values in the initializer; otherwise it
-      // would need to build each element-by-element
-      const dt_aligned_pixel_t rotate1 = { chan[1], chan[2], chan[0], chan[3] };
-      const dt_aligned_pixel_t rotate2 = { chan[2], chan[0], chan[1], chan[3] };
-      dt_aligned_pixel_t othersum;
-      for_each_channel(c)
-        othersum[c] = rotate1[c] + rotate2[c];
-      dt_aligned_pixel_t velvia;
-      for_each_channel(c)
-        velvia[c] = CLAMPS(chan[c] + saturation * (chan[c] - 0.5f * othersum[c]), 0.0f, 1.0f);
-      copy_pixel_nontemporal(out, velvia);
-    }
-    dt_omploop_sfence();  // ensure that nontemporal writes have flushed to RAM before continuing
-  }
+  const size_t npixels = (size_t)roi_out->width * roi_out->height;
+  darkroom_velvia_process((const float *)ivoid, (float *)ovoid, npixels, strength, data->bias);
 }
 
 #ifdef HAVE_OPENCL

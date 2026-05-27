@@ -42,6 +42,35 @@ void darkroom_vibrance_process(const float *in_buf,
                                float amount);
 
 /*
+ * Velvia IOP — film-emulation saturation boost in RGB colorspace.
+ *
+ * Replaces the OMP loop in src/iop/velvia.c::process().
+ * strength must be pre-scaled by 0.01 (data->strength / 100.0f).
+ * Handles strength <= 0 internally (copies input).
+ */
+void darkroom_velvia_process(const float *in_buf,
+                             float *out_buf,
+                             size_t npixels,
+                             float strength,
+                             float bias);
+
+/*
+ * Colisa IOP — contrast/brightness (LUT) + saturation in Lab colorspace.
+ *
+ * Replaces the OMP loop in src/iop/colisa.c::process().
+ * ctable/ltable point to dt_iop_colisa_data_t.ctable/ltable (65536 floats each).
+ * cunbounded_coeffs/lunbounded_coeffs each have 3 floats.
+ */
+void darkroom_colisa_process(const float *in_buf,
+                             float *out_buf,
+                             size_t npixels,
+                             const float *ctable,
+                             const float *cunbounded_coeffs,
+                             const float *ltable,
+                             const float *lunbounded_coeffs,
+                             float saturation);
+
+/*
  * Exposure IOP pixel loop.
  *
  * Replaces the inner loop in src/iop/exposure.c::process():

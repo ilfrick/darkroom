@@ -3,8 +3,10 @@
 //! Each IOP from src/iop/*.c will become a struct in this module
 //! implementing `IopProcess`. Migration order follows RUST_MIGRATION_PLAN.md.
 
+pub mod colisa;
 pub mod colorcontrast;
 pub mod exposure;
+pub mod velvia;
 pub mod vibrance;
 
 use crate::{params::IopParams, roi::RoiIn, Result};

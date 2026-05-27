@@ -29,6 +29,7 @@
 #include "gui/gtk.h"
 #include "gui/presets.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 
 #include <assert.h>
 #include <math.h>
@@ -154,25 +155,11 @@ void process(dt_iop_module_t *self, dt_dev_pixelpipe_iop_t *piece, const void *c
              void *const ovoid, const dt_iop_roi_t *const roi_in, const dt_iop_roi_t *const roi_out)
 {
   dt_iop_colisa_data_t *data = piece->data;
-  float *in = (float *)ivoid;
-  float *out = (float *)ovoid;
-
-  const int width = roi_in->width;
-  const int height = roi_in->height;
-  const int ch = piece->colors;
-
-  DT_OMP_FOR()
-  for(size_t k = 0; k < (size_t)width * height; k++)
-  {
-    float L = (in[k * ch + 0] < 100.0f)
-                  ? data->ctable[CLAMP((int)(in[k * ch + 0] / 100.0f * 0x10000ul), 0, 0xffff)]
-                  : dt_iop_eval_exp(data->cunbounded_coeffs, in[k * ch + 0] / 100.0f);
-    out[k * ch + 0] = (L < 100.0f) ? data->ltable[CLAMP((int)(L / 100.0f * 0x10000ul), 0, 0xffff)]
-                                   : dt_iop_eval_exp(data->lunbounded_coeffs, L / 100.0f);
-    out[k * ch + 1] = in[k * ch + 1] * data->saturation;
-    out[k * ch + 2] = in[k * ch + 2] * data->saturation;
-    out[k * ch + 3] = in[k * ch + 3];
-  }
+  const size_t npixels = (size_t)roi_in->width * roi_in->height;
+  darkroom_colisa_process((const float *)ivoid, (float *)ovoid, npixels,
+                          data->ctable, data->cunbounded_coeffs,
+                          data->ltable, data->lunbounded_coeffs,
+                          data->saturation);
 }
 
 
