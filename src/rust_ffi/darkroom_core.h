@@ -42,6 +42,21 @@ void darkroom_vibrance_process(const float *in_buf,
                                float amount);
 
 /*
+ * Levels IOP — black/white-point + gamma correction via LUT.
+ *
+ * Replaces the OMP loop in src/iop/levels.c::process().
+ * lut points to dt_iop_levels_data_t.lut (65536 floats).
+ * level_range = d->levels[2] - d->levels[0], pre-computed by caller.
+ */
+void darkroom_levels_process(const float *in_buf,
+                             float *out_buf,
+                             size_t npixels,
+                             float level_black,
+                             float level_range,
+                             float inv_gamma,
+                             const float *lut);
+
+/*
  * Color-correction IOP — luminance-dependent Lab a/b scaling with saturation.
  *
  * Replaces the OMP loop in src/iop/colorcorrection.c::process().

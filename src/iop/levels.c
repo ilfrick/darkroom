@@ -37,6 +37,7 @@
 #include "gui/presets.h"
 #include "iop/iop_api.h"
 #include "libs/colorpicker.h"
+#include "rust_ffi/darkroom_core.h"
 
 #define DT_GUI_CURVE_EDITOR_INSET DT_PIXEL_APPLY_DPI(5)
 // special marker value for uninitialized (and thus invalid) levels.  Use this in preference
@@ -403,34 +404,11 @@ void process(dt_iop_module_t *self,
   const float *const restrict in = (float*)ivoid;
   float *const restrict out = (float*)ovoid;
   const size_t npixels = (size_t)roi_out->width * roi_out->height;
-  const float level_black = d->levels[0];
-  const float level_range = d->levels[2] - d->levels[0];
-  const float inv_gamma = d->in_inv_gamma;
-  const float *lut = d->lut;
-
-  DT_OMP_FOR()
-  for(int i = 0; i < 4 * npixels; i += 4)
-  {
-    const float L_in = in[i] / 100.0f;
-    float L_out;
-    if(L_in <= level_black)
-    {
-      // Anything below the lower threshold just clips to zero
-      L_out = 0.0f;
-    }
-    else
-    {
-      const float percentage = (L_in - level_black) / level_range;
-      // Within the expected input range we can use the lookup table, else we need to compute from scratch
-      L_out = percentage < 1.0f ? lut[(int)(percentage * 0x10000ul)] : 100.0f * powf(percentage, inv_gamma);
-    }
-
-    // Preserving contrast
-    const float denom = (in[i] > 0.01f) ? in[i] : 0.01f;
-    out[i] = L_out;
-    out[i+1] = in[i+1] * L_out / denom;
-    out[i+2] = in[i+2] * L_out / denom;
-  }
+  darkroom_levels_process(in, out, npixels,
+                          d->levels[0],
+                          d->levels[2] - d->levels[0],
+                          d->in_inv_gamma,
+                          d->lut);
 }
 
 #ifdef HAVE_OPENCL

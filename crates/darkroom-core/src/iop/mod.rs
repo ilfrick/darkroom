@@ -8,6 +8,7 @@ pub mod colorcontrast;
 pub mod colorcorrection;
 pub mod colorize;
 pub mod exposure;
+pub mod levels;
 pub mod relight;
 pub mod velvia;
 pub mod vibrance;
