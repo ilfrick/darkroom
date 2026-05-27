@@ -27,6 +27,7 @@
 #include "gui/gtk.h"
 #include "gui/presets.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 
 #include <assert.h>
 #include <math.h>
@@ -140,14 +141,8 @@ void process(dt_iop_module_t *self, dt_dev_pixelpipe_iop_t *piece, const void *c
   const float a_base = d->a_base;
   const float b_scale = d->b_scale;
   const float b_base = d->b_base;
-  DT_OMP_FOR()
-  for(size_t k = 0; k < (size_t)4 * roi_out->width * roi_out->height; k += 4)
-  {
-    out[k] = in[k];
-    out[k+1] = saturation * (in[k+1] + in[k+0] * a_scale + a_base);
-    out[k+2] = saturation * (in[k+2] + in[k+0] * b_scale + b_base);
-    out[k+3] = in[k+3];
-  }
+  const size_t npixels = (size_t)roi_out->width * roi_out->height;
+  darkroom_colorcorrection_process(in, out, npixels, a_scale, a_base, b_scale, b_base, saturation);
 }
 
 #ifdef HAVE_OPENCL

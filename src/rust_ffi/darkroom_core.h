@@ -42,6 +42,22 @@ void darkroom_vibrance_process(const float *in_buf,
                                float amount);
 
 /*
+ * Color-correction IOP — luminance-dependent Lab a/b scaling with saturation.
+ *
+ * Replaces the OMP loop in src/iop/colorcorrection.c::process().
+ * out.a = saturation * (in.a + in.L * a_scale + a_base)
+ * out.b = saturation * (in.b + in.L * b_scale + b_base)
+ */
+void darkroom_colorcorrection_process(const float *in_buf,
+                                      float *out_buf,
+                                      size_t npixels,
+                                      float a_scale,
+                                      float a_base,
+                                      float b_scale,
+                                      float b_base,
+                                      float saturation);
+
+/*
  * Relight IOP — gaussian-weighted L-channel boost in Lab colorspace.
  *
  * Replaces the OMP loop in src/iop/relight.c::process().

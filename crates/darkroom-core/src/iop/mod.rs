@@ -5,6 +5,7 @@
 
 pub mod colisa;
 pub mod colorcontrast;
+pub mod colorcorrection;
 pub mod colorize;
 pub mod exposure;
 pub mod relight;
