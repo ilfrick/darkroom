@@ -489,6 +489,52 @@ void darkroom_exposure_process(const float *in_buf,
                                float scale);
 
 /*
+ * Soften IOP initial pixel loop.
+ *
+ * Replaces the DT_OMP_FOR loop in src/iop/soften.c::process() (before dt_box_mean).
+ * Converts each pixel RGB→HSL, scales saturation and lightness, writes back RGB.
+ *
+ * brightness = 1.0f / exp2f(-d->brightness)
+ * saturation = d->saturation / 100.0f
+ * Output alpha is always 0 (matches hsl2rgb() C behaviour).
+ */
+void darkroom_soften_process(const float *in_buf,
+                             float *out_buf,
+                             size_t npixels,
+                             float brightness,
+                             float saturation);
+
+/*
+ * Shadows/Highlights IOP pixel loop.
+ *
+ * Replaces the DT_OMP_FOR loop in src/iop/shadhi.c::process().
+ * IMPORTANT: the caller must first run the gaussian/bilateral blur so that
+ * out_buf already contains the blurred Lab image when this is called.
+ *
+ * All scalar params are pre-computed in process() from dt_iop_shadhi_data_t:
+ *   shadows    = 2 * clamp(data->shadows / 100, -1, 1)
+ *   highlights = 2 * clamp(data->highlights / 100, -1, 1)
+ *   whitepoint = max(1 - data->whitepoint / 100, 0.01)
+ *   compress   = clamp(data->compress / 100, 0, 0.99)
+ *   shadows_ccorrect / highlights_ccorrect: as computed in process()
+ *   low_approximation = data->low_approximation
+ *   flags      = data->flags  (UNBOUND_* bitmask)
+ *   unbound_mask = (algo==BILATERAL && UNBOUND_BILATERAL) || (algo==GAUSSIAN && UNBOUND_GAUSSIAN)
+ */
+void darkroom_shadhi_process(const float *in_buf,
+                             float *out_buf,
+                             size_t npixels,
+                             float shadows,
+                             float highlights,
+                             float whitepoint,
+                             float compress,
+                             float shadows_ccorrect,
+                             float highlights_ccorrect,
+                             float low_approximation,
+                             unsigned int flags,
+                             int unbound_mask);
+
+/*
  * Filmic IOP pixel loop (Lab-space filmic tone-mapping).
  *
  * Replaces the DT_OMP_FOR loop in src/iop/filmic.c::process().

@@ -36,6 +36,7 @@
 #include "gui/accelerators.h"
 #include "gui/gtk.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 #include <gtk/gtk.h>
 #include <inttypes.h>
 
@@ -125,15 +126,7 @@ void process(dt_iop_module_t *self,
 
   const size_t npixels = (size_t)roi_out->width * roi_out->height;
   /* create overexpose image and then blur */
-  DT_OMP_FOR()
-  for(size_t k = 0; k < 4 * npixels; k += 4)
-  {
-    float h, s, l;
-    rgb2hsl(&in[k], &h, &s, &l);
-    s *= saturation;
-    l *= brightness;
-    hsl2rgb(&out[k], h, CLIP(s), CLIP(l));
-  }
+  darkroom_soften_process(in, out, npixels, brightness, saturation);
 
   const float w = piece->iwidth * piece->iscale;
   const float h = piece->iheight * piece->iscale;

@@ -32,6 +32,7 @@
 #include "gui/gtk.h"
 #include "gui/presets.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 #include <assert.h>
 #include <math.h>
 #include <stdlib.h>
@@ -407,87 +408,10 @@ void process(dt_iop_module_t *self,
 #define doublemax (2.0f * lmax)
   const size_t npixels = (size_t)width * height;
 
-  DT_OMP_FOR()
-  for(size_t j = 0; j < 4 * npixels; j += 4)
-  {
-    dt_aligned_pixel_t ta, tb;
-    _Lab_scale(&in[j], ta);
-    // invert and desaturate the blurred output pixel
-    out[j + 0] = 100.0f - out[j + 0];
-    out[j + 1] = 0.0f;
-    out[j + 2] = 0.0f;
-    _Lab_scale(&out[j], tb);
-
-    ta[0] = ta[0] > 0.0f ? ta[0] / whitepoint : ta[0];
-    tb[0] = tb[0] > 0.0f ? tb[0] / whitepoint : tb[0];
-
-    // overlay highlights
-    float highlights2 = highlights * highlights;  // 0.0 .. 4.0
-    const float highlights_xform = CLAMP(1.0f - tb[0] / (1.0f - compress), 0.0f, 1.0f);
-
-    while(highlights2 > 0.0f)
-    {
-      const float la = (flags & UNBOUND_HIGHLIGHTS_L) ? ta[0] : CLAMP(ta[0], lmin, lmax);
-      float lb = (tb[0] - halfmax) * sign(-highlights) * sign(lmax - la) + halfmax;
-      lb = unbound_mask ? lb : CLAMP(lb, lmin, lmax);
-      const float lref = copysignf(fabsf(la) > low_approximation ? 1.0f / fabsf(la) : 1.0f / low_approximation, la);
-      const float href = copysignf(
-          fabsf(1.0f - la) > low_approximation ? 1.0f / fabsf(1.0f - la) : 1.0f / low_approximation, 1.0f - la);
-
-      const float chunk = highlights2 > 1.0f ? 1.0f : highlights2;
-      const float optrans = chunk * highlights_xform;
-      highlights2 -= 1.0f;
-
-      ta[0] = la * (1.0f - optrans)
-              + (la > halfmax ? lmax - (lmax - doublemax * (la - halfmax)) * (lmax - lb) : doublemax * la
-                                                                                           * lb) * optrans;
-
-      ta[0] = (flags & UNBOUND_HIGHLIGHTS_L) ? ta[0] : CLAMP(ta[0], lmin, lmax);
-
-      const float chroma_factor = (ta[0] * lref * (1.0f - highlights_ccorrect)
-                                   + (1.0f - ta[0]) * href * highlights_ccorrect);
-      ta[1] = ta[1] * (1.0f - optrans) + (ta[1] + tb[1]) * chroma_factor * optrans;
-      ta[1] = (flags & UNBOUND_HIGHLIGHTS_A) ? ta[1] : CLAMP(ta[1], min_A, max_A);
-
-      ta[2] = ta[2] * (1.0f - optrans) + (ta[2] + tb[2]) * chroma_factor * optrans;
-      ta[2] = (flags & UNBOUND_HIGHLIGHTS_B) ? ta[2] : CLAMP(ta[2], min_B, max_B);
-    }
-
-    // overlay shadows
-    float shadows2 = shadows * shadows; // 0.0 .. 4.0
-    const float shadows_xform = CLAMP(tb[0] / (1.0f - compress) - compress / (1.0f - compress), 0.0f, 1.0f);
-
-    while(shadows2 > 0.0f)
-    {
-      const float la = (flags & UNBOUND_HIGHLIGHTS_L) ? ta[0] : CLAMP(ta[0], lmin, lmax);
-      float lb = (tb[0] - halfmax) * sign(shadows) * sign(lmax - la) + halfmax;
-      lb = unbound_mask ? lb : CLAMP(lb, lmin, lmax);
-      const float lref = copysignf(fabsf(la) > low_approximation ? 1.0f / fabsf(la) : 1.0f / low_approximation, la);
-      const float href = copysignf(
-          fabsf(1.0f - la) > low_approximation ? 1.0f / fabsf(1.0f - la) : 1.0f / low_approximation, 1.0f - la);
-
-
-      const float chunk = shadows2 > 1.0f ? 1.0f : shadows2;
-      const float optrans = chunk * shadows_xform;
-      shadows2 -= 1.0f;
-
-      ta[0] = la * (1.0f - optrans)
-              + (la > halfmax ? lmax - (lmax - doublemax * (la - halfmax)) * (lmax - lb) : doublemax * la
-                                                                                           * lb) * optrans;
-
-      ta[0] = (flags & UNBOUND_SHADOWS_L) ? ta[0] : CLAMP(ta[0], lmin, lmax);
-
-      const float chroma_factor = (ta[0] * lref * shadows_ccorrect
-                                   + (1.0f - ta[0]) * href * (1.0f - shadows_ccorrect));
-      ta[1] = ta[1] * (1.0f - optrans) + (ta[1] + tb[1]) * chroma_factor * optrans;
-      ta[1] = (flags & UNBOUND_SHADOWS_A) ? ta[1] : CLAMP(ta[1], min_A, max_A);
-
-      ta[2] = ta[2] * (1.0f - optrans) + (ta[2] + tb[2]) * chroma_factor * optrans;
-      ta[2] = (flags & UNBOUND_SHADOWS_B) ? ta[2] : CLAMP(ta[2], min_A, max_B);
-    }
-
-    _Lab_rescale(ta, &out[j]);
-  }
+  darkroom_shadhi_process(in, out, npixels,
+                          shadows, highlights, whitepoint, compress,
+                          shadows_ccorrect, highlights_ccorrect,
+                          low_approximation, flags, unbound_mask);
 }
 
 

@@ -6,6 +6,8 @@
 pub mod basicadj;
 pub mod channelmixer;
 pub mod filmic;
+pub mod shadhi;
+pub mod soften;
 pub mod colisa;
 pub mod colorcontrast;
 pub mod colorcorrection;
