@@ -1407,7 +1407,6 @@ void process(dt_iop_module_t *self, dt_dev_pixelpipe_iop_t *piece, const void *c
 {
   const dt_iop_order_iccprofile_info_t *const work_profile = dt_ioppr_get_iop_work_profile_info(self, self->dev->iop);
 
-  const int ch = piece->colors;
   dt_iop_basicadj_data_t *d = piece->data;
   dt_iop_basicadj_params_t *p = &d->params;
   dt_iop_basicadj_gui_data_t *g = self->gui_data;
