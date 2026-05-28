@@ -584,6 +584,37 @@ void darkroom_shadhi_process(const float *in_buf,
                              int unbound_mask);
 
 /*
+ * Global Tonemap IOP — Reinhard / filmic (Hable) / Drago per-pixel operators.
+ *
+ * Each function replaces the DT_OMP_FOR loop inside process_reinhard/filmic/drago().
+ * ch = piece->colors (stride, normally 4).  Only L (ch*k+0) is tone-mapped;
+ * a (ch*k+1) and b (ch*k+2) are copied unchanged.  Alpha is not touched.
+ *
+ * Drago pre-conditions (computed in C before calling):
+ *   ldc = data->drago.max_light * 0.01f / log10f(lwmax + 1)
+ *   bl  = logf(max(eps, data->drago.bias)) / logf(0.5f)
+ *   eps = 0.0001f  (constant)
+ */
+void darkroom_globaltonemap_reinhard(const float *in_buf,
+                                     float *out_buf,
+                                     size_t npixels,
+                                     size_t ch);
+
+void darkroom_globaltonemap_filmic(const float *in_buf,
+                                   float *out_buf,
+                                   size_t npixels,
+                                   size_t ch);
+
+void darkroom_globaltonemap_drago(const float *in_buf,
+                                  float *out_buf,
+                                  size_t npixels,
+                                  size_t ch,
+                                  float ldc,
+                                  float bl,
+                                  float lwmax,
+                                  float eps);
+
+/*
  * Bloom IOP — threshold gather + screen-blend, split around dt_box_mean blur.
  *
  * Pass 1: darkroom_bloom_gather fills a packed 1-channel buffer (npixels floats)

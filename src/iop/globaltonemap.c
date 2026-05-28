@@ -29,6 +29,7 @@
 #include "gui/accelerators.h"
 #include "gui/gtk.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
@@ -174,16 +175,8 @@ static inline void process_reinhard(dt_iop_module_t *self, dt_dev_pixelpipe_iop_
   float *out = (float *)ovoid;
   const int ch = piece->colors;
 
-  DT_OMP_FOR()
-  for(size_t k = 0; k < (size_t)roi_out->width * roi_out->height; k++)
-  {
-    float *inp = in + ch * k;
-    float *outp = out + ch * k;
-    float l = inp[0] / 100.0;
-    outp[0] = 100.0 * (l / (1.0f + l));
-    outp[1] = inp[1];
-    outp[2] = inp[2];
-  }
+  const size_t npixels = (size_t)roi_out->width * roi_out->height;
+  darkroom_globaltonemap_reinhard(in, out, npixels, ch);
 }
 
 static inline void process_drago(dt_iop_module_t *self, dt_dev_pixelpipe_iop_t *piece,
@@ -250,17 +243,8 @@ static inline void process_drago(dt_iop_module_t *self, dt_dev_pixelpipe_iop_t *
   const float ldc = data->drago.max_light * 0.01 / log10f(lwmax + 1);
   const float bl = logf(fmaxf(eps, data->drago.bias)) / logf(0.5);
 
-  DT_OMP_FOR()
-  for(size_t k = 0; k < (size_t)roi_out->width * roi_out->height; k++)
-  {
-    float *inp = in + ch * k;
-    float *outp = out + ch * k;
-    float lw = inp[0] * 0.01f;
-    outp[0] = 100.0f
-              * (ldc * logf(fmaxf(eps, lw + 1.0f)) / logf(fmaxf(eps, 2.0f + (powf(lw / lwmax, bl)) * 8.0f)));
-    outp[1] = inp[1];
-    outp[2] = inp[2];
-  }
+  const size_t npixels_drago = (size_t)roi_out->width * roi_out->height;
+  darkroom_globaltonemap_drago(in, out, npixels_drago, ch, ldc, bl, lwmax, eps);
 }
 
 static inline void process_filmic(dt_iop_module_t *self, dt_dev_pixelpipe_iop_t *piece,
@@ -272,17 +256,8 @@ static inline void process_filmic(dt_iop_module_t *self, dt_dev_pixelpipe_iop_t 
   float *out = (float *)ovoid;
   const int ch = piece->colors;
 
-  DT_OMP_FOR()
-  for(size_t k = 0; k < (size_t)roi_out->width * roi_out->height; k++)
-  {
-    float *inp = in + ch * k;
-    float *outp = out + ch * k;
-    float l = inp[0] / 100.0;
-    float x = fmaxf(0.0f, l - 0.004f);
-    outp[0] = 100.0 * ((x * (6.2 * x + .5)) / (x * (6.2 * x + 1.7) + 0.06));
-    outp[1] = inp[1];
-    outp[2] = inp[2];
-  }
+  const size_t npixels_filmic = (size_t)roi_out->width * roi_out->height;
+  darkroom_globaltonemap_filmic(in, out, npixels_filmic, ch);
 }
 
 void process(dt_iop_module_t *self, dt_dev_pixelpipe_iop_t *piece, const void *const ivoid,

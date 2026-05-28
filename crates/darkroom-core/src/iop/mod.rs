@@ -5,6 +5,7 @@
 
 pub mod basicadj;
 pub mod bloom;
+pub mod globaltonemap;
 pub mod channelmixer;
 pub mod colorbalance;
 pub mod filmic;
