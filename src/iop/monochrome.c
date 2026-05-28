@@ -33,6 +33,7 @@
 #include "gui/presets.h"
 #include "gui/accelerators.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
@@ -208,12 +209,7 @@ void process(dt_iop_module_t *self,
   float *const restrict out = (float *)o;
   const float d_a = d->a;
   const float d_b = d->b;
-  DT_OMP_FOR_SIMD(aligned(in, out:64))
-  for(int k = 0; k < 4*npixels; k += 4)
-  {
-    out[k+0] = 100.0f * _color_filter(in[k+1], in[k+2], d_a, d_b, sigma2);
-    out[k+1] = out[k+2] = 0.0f;
-  }
+  darkroom_monochrome_colorfilter(in, out, npixels, d_a, d_b, sigma2);
 
   // second step: blur filter contribution:
   const float scale = fmaxf(piece->iscale / roi_in->scale, 1.f);
@@ -228,13 +224,7 @@ void process(dt_iop_module_t *self,
   dt_bilateral_free(b);
 
   const float highlights = d->highlights;
-  DT_OMP_FOR_SIMD(aligned(in, out:64))
-  for(int k = 0; k < 4*npixels; k += 4)
-  {
-    const float tt = _envelope(in[k]);
-    const float t = tt + (1.0f - tt) * (1.0f - highlights);
-    out[k] = (1.0f - t) * in[k] + t * out[k] * (1.0f / 100.0f) * in[k]; // normalized filter * input brightness
-  }
+  darkroom_monochrome_blend(in, out, npixels, highlights);
 }
 
 #ifdef HAVE_OPENCL

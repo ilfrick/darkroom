@@ -584,6 +584,30 @@ void darkroom_shadhi_process(const float *in_buf,
                              int unbound_mask);
 
 /*
+ * Monochrome IOP — two-pass Lab desaturation with bilateral-filtered blend.
+ *
+ * Pass 1 (before bilateral blur):
+ *   darkroom_monochrome_colorfilter — L_out = 100 * exp(-clamp(dist^2/sigma2, 0,1))
+ *   where dist^2 = (a_in - a)^2 + (b_in - b)^2; sets a_out=b_out=0.
+ *   sigma2 = 2 * (d->size * 128)^2
+ *
+ * Pass 2 (after bilateral blur of out):
+ *   darkroom_monochrome_blend — blends bilateral result with original L.
+ *   highlights = d->highlights (0..1).
+ */
+void darkroom_monochrome_colorfilter(const float *in_buf,
+                                     float *out_buf,
+                                     size_t npixels,
+                                     float a,
+                                     float b,
+                                     float sigma2);
+
+void darkroom_monochrome_blend(const float *in_buf,
+                               float *out_buf,
+                               size_t npixels,
+                               float highlights);
+
+/*
  * Global Tonemap IOP — Reinhard / filmic (Hable) / Drago per-pixel operators.
  *
  * Each function replaces the DT_OMP_FOR loop inside process_reinhard/filmic/drago().
