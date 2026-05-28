@@ -31,6 +31,7 @@
 #include "gui/accelerators.h"
 #include "gui/gtk.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 #include <gtk/gtk.h>
 #include <inttypes.h>
 
@@ -271,9 +272,7 @@ void process(dt_iop_module_t *self,
 /* to reduce cache pressure and memory bandwidth during the blur operation */
   const size_t npixels = (size_t)roi_out->height * roi_out->width;
 
-  DT_OMP_FOR()
-  for(size_t k = 0; k < (size_t)npixels; k++)
-    out[k] = 100.0f - LCLIP(in[4 * k]); // only L in Lab space
+  darkroom_highpass_invert(in, out, npixels);
 
   const int rad = MAX_RADIUS * (fmin(100.0, data->sharpness + 1) / 100.0);
   const int radius = MIN(MAX_RADIUS, ceilf(rad * roi_in->scale / piece->iscale));
@@ -288,17 +287,7 @@ void process(dt_iop_module_t *self,
   // factor to save a multiplication per pixel
   const float contrast_scale = ((data->contrast / 100.0f) * 7.5f) * 0.5f;
 
-  _blend(in, out, contrast_scale, npixels);    // only does final 3/4 of given pixels, so repeat
-  _blend(in, out, contrast_scale, npixels/4);  // only does final 3/4 of given pixels
-  /* process the remaining sixteenth of the pixels */
-  for(ssize_t k = npixels/16 - 1; k >= 0; k--)
-  {
-    dt_aligned_pixel_t hipass = { 0.0f, 0.0f, 0.0f, 0.0f };  // a=b=0 to desaturate, alpha doesn't matter
-    // Mix out and in
-    const float L = (out[k] + in[4*k]) - 100.0f;
-    hipass[0] = CLAMP((L * contrast_scale) + 50.0f, 0.0f, 100.0f);
-    copy_pixel(out + 4*k, hipass);
-  }
+  darkroom_highpass_blend(in, out, npixels, (float)contrast_scale);
 }
 
 void commit_params(dt_iop_module_t *self, dt_iop_params_t *p1, dt_dev_pixelpipe_t *pipe,

@@ -584,6 +584,28 @@ void darkroom_shadhi_process(const float *in_buf,
                              int unbound_mask);
 
 /*
+ * Highpass IOP — invert+pack and blend, split around dt_box_mean blur.
+ *
+ * Pass 1: darkroom_highpass_invert
+ *   Writes out[k] = 100 - clamp(in[4*k], 0, 100) into a packed 1-channel buffer.
+ *   The caller then blurs out_buf with dt_box_mean (1 channel, BOX_ITERATIONS).
+ *
+ * Pass 2: darkroom_highpass_blend
+ *   Reads packed blurred out[k] and original in[4*k], writes desaturated 4-ch pixel.
+ *   Traverses in REVERSE (k = npixels-1 .. 0) so reads of the packed region are safe.
+ *   Replaces both _blend() OMP calls and the final sequential loop in C.
+ *   contrast_scale = ((data->contrast / 100) * 7.5) * 0.5  (pre-computed by caller).
+ */
+void darkroom_highpass_invert(const float *in_buf,
+                              float *out_buf,
+                              size_t npixels);
+
+void darkroom_highpass_blend(const float *in_buf,
+                             float *out_buf,
+                             size_t npixels,
+                             float contrast_scale);
+
+/*
  * Monochrome IOP — two-pass Lab desaturation with bilateral-filtered blend.
  *
  * Pass 1 (before bilateral blur):
