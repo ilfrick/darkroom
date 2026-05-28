@@ -232,27 +232,6 @@ error:
 }
 #endif
 
-static void _blend(const float *const restrict in,
-                   float *const restrict out,
-                   const double contrast_scale,
-                   const size_t npixels)
-{
-  /* Blend the inverted blurred L channel with the original input.  Because we packed the L values */
-  /* and are inserting the result in the same buffer containing the L values, we need to work in */
-  /* reverse order */
-  /* We can only do the final 3/4 in parallel here, because updating the first quarter in one thread */
-  /* would clobber values still needed by other threads. */
-  DT_OMP_FOR()
-  for(size_t k = npixels - 1; k >= npixels/4; k--)
-  {
-    dt_aligned_pixel_t hipass = { 0.0f, 0.0f, 0.0f, 0.0f };  // a=b=0 to desaturate, alpha doesn't matter
-   // Mix out and in
-    const float L = (out[k] + in[4*k]) - 100.0f;
-    hipass[0] = CLAMP((L * contrast_scale) + 50.0f, 0.0f, 100.0f);
-    copy_pixel(out + 4*k, hipass);
-  }
-}
-
 void process(dt_iop_module_t *self,
              dt_dev_pixelpipe_iop_t *piece,
              const void *const ivoid,

@@ -174,25 +174,6 @@ static float _color_filter(const float ai,
   return dt_fast_expf(-CLAMPS(((ai - a) * (ai - a) + (bi - b) * (bi - b)) / dbl_size, 0.0f, 1.0f));
 }
 
-static float _envelope(const float L)
-{
-  const float x = CLAMPS(L / 100.0f, 0.0f, 1.0f);
-  // const float alpha = 2.0f;
-  const float beta = 0.6f;
-  if(x < beta)
-  {
-    // return 1.0f-fabsf(x/beta-1.0f)^2
-    const float tmp = (x / beta - 1.0f); // no need for fabsf since we square the value
-    return 1.0f - tmp * tmp;
-  }
-  else
-  {
-    const float tmp1 = (1.0f - x) / (1.0f - beta);
-    const float tmp2 = tmp1 * tmp1;
-    const float tmp3 = tmp2 * tmp1;
-    return 3.0f * tmp2 - 2.0f * tmp3;
-  }
-}
 
 void process(dt_iop_module_t *self,
              dt_dev_pixelpipe_iop_t *piece,
