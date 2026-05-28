@@ -1872,9 +1872,6 @@ void process(dt_iop_module_t *self,
              const dt_iop_roi_t *const roi_in,
              const dt_iop_roi_t *const roi_out)
 {
-  const dt_iop_order_iccprofile_info_t *const work_profile =
-    dt_ioppr_get_pipe_work_profile_info(piece->pipe);
-
   const float *const restrict in = (float*)ivoid;
   float *const restrict out = (float*)ovoid;
   if(!dt_iop_have_required_input_format(4 /*we need full-color pixels*/,
