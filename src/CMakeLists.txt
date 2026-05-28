@@ -1026,12 +1026,14 @@ if(CARGO)
     set(_cargo_flags "--release")
   endif()
 
+  set(_cargo_target_dir "${CMAKE_BINARY_DIR}/cargo-target")
   set(_darkroom_core_lib
-      "${CMAKE_SOURCE_DIR}/target/${_rust_profile}/libdarkroom_core.so")
+      "${_cargo_target_dir}/${_rust_profile}/libdarkroom_core.so")
 
   add_custom_command(
     OUTPUT  "${_darkroom_core_lib}"
-    COMMAND "${CARGO}" build ${_cargo_flags} -p darkroom-core
+    COMMAND ${CMAKE_COMMAND} -E env "CARGO_TARGET_DIR=${_cargo_target_dir}"
+            "${CARGO}" build ${_cargo_flags} -p darkroom-core
             --manifest-path "${CMAKE_SOURCE_DIR}/Cargo.toml"
     DEPENDS "${CMAKE_SOURCE_DIR}/crates/darkroom-core/Cargo.toml"
             "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/lib.rs"
