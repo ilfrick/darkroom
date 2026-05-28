@@ -681,6 +681,19 @@ void darkroom_bloom_blend(const float *in_buf,
                           size_t npixels);
 
 /*
+ * Invert IOP — non-mosaiced (4-channel RGBA) path only.
+ *
+ * Replaces the non-raw DT_OMP_FOR loop in src/iop/invert.c::process().
+ * color points to 4 floats: { d->color[0], d->color[1], d->color[2], 1.0f }.
+ * X-Trans and Bayer mosaic paths remain in C.
+ * out[k*4+c] = color[c] - in[k*4+c] for c=0..3
+ */
+void darkroom_invert_process(const float *in_buf,
+                             float *out_buf,
+                             size_t npixels,
+                             const float *color);
+
+/*
  * Filmic IOP pixel loop (Lab-space filmic tone-mapping).
  *
  * Replaces the DT_OMP_FOR loop in src/iop/filmic.c::process().

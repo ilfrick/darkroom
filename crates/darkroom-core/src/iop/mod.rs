@@ -7,6 +7,7 @@ pub mod basicadj;
 pub mod bloom;
 pub mod globaltonemap;
 pub mod highpass;
+pub mod invert;
 pub mod monochrome;
 pub mod channelmixer;
 pub mod colorbalance;

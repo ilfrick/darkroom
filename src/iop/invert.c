@@ -28,6 +28,7 @@
 #include "gui/accelerators.h"
 #include "gui/gtk.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 
 DT_MODULE_INTROSPECTION(2, dt_iop_invert_params_t)
 
@@ -341,15 +342,7 @@ void process(dt_iop_module_t *self, dt_dev_pixelpipe_iop_t *piece, const void *c
 
     const dt_aligned_pixel_t color = { d->color[0], d->color[1], d->color[2], 1.0f };
 
-    DT_OMP_FOR()
-    for(size_t k = 0; k < npixels; k++)
-    {
-      dt_aligned_pixel_t inv;
-      for_each_channel(c)
-        inv[c] = color[c] - in[4*k+c];
-      copy_pixel_nontemporal(out + 4*k, inv);
-    }
-    dt_omploop_sfence();
+    darkroom_invert_process(in, out, npixels, color);
   }
 }
 
