@@ -584,6 +584,26 @@ void darkroom_shadhi_process(const float *in_buf,
                              int unbound_mask);
 
 /*
+ * Bloom IOP — threshold gather + screen-blend, split around dt_box_mean blur.
+ *
+ * Pass 1: darkroom_bloom_gather fills a packed 1-channel buffer (npixels floats)
+ *   with scaled L values above threshold; zeros elsewhere.
+ *   scale = 1.0f / exp2f(-1.0f * (fmin(100,strength+1) / 100.0f))
+ * The caller then blurs that buffer with dt_box_mean().
+ * Pass 2: darkroom_bloom_blend screen-blends the blurred L back into the 4-ch output.
+ */
+void darkroom_bloom_gather(const float *in_buf,
+                           float *blur_buf,
+                           size_t npixels,
+                           float threshold,
+                           float scale);
+
+void darkroom_bloom_blend(const float *in_buf,
+                          float *out_buf,
+                          const float *blur_buf,
+                          size_t npixels);
+
+/*
  * Filmic IOP pixel loop (Lab-space filmic tone-mapping).
  *
  * Replaces the DT_OMP_FOR loop in src/iop/filmic.c::process().

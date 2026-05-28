@@ -4,6 +4,7 @@
 //! implementing `IopProcess`. Migration order follows RUST_MIGRATION_PLAN.md.
 
 pub mod basicadj;
+pub mod bloom;
 pub mod channelmixer;
 pub mod colorbalance;
 pub mod filmic;

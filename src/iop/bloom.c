@@ -30,6 +30,7 @@
 #include "gui/accelerators.h"
 #include "gui/gtk.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 
 #include <assert.h>
 #include <gtk/gtk.h>
@@ -141,12 +142,7 @@ void process(dt_iop_module_t *self,
 
   const float threshold = data->threshold;
 /* get the thresholded lights into buffer */
-  DT_OMP_FOR()
-  for(size_t k = 0; k < npixels; k++)
-  {
-    const float L = in[4*k] * scale;
-    blurlightness[k] = (L > threshold) ? L : 0.0f;
-  }
+  darkroom_bloom_gather(in, blurlightness, npixels, threshold, scale);
 
   /* horizontal blur into memchannel lightness */
   const int range = 2 * radius + 1;
@@ -155,14 +151,7 @@ void process(dt_iop_module_t *self,
   dt_box_mean(blurlightness, roi_out->height, roi_out->width, 1, hr, BOX_ITERATIONS);
 
 /* screen blend lightness with original */
-  DT_OMP_FOR()
-  for(size_t k = 0; k < npixels; k++)
-  {
-    out[4*k+0] = 100.0f - (((100.0f - in[4*k]) * (100.0f - blurlightness[k])) / 100.0f); // Screen blend
-    out[4*k+1] = in[4*k+1];
-    out[4*k+2] = in[4*k+2];
-    out[4*k+3] = in[4*k+3];
-  }
+  darkroom_bloom_blend(in, out, blurlightness, npixels);
   dt_free_align(blurlightness);
 }
 
