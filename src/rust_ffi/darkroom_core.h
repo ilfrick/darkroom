@@ -354,6 +354,65 @@ void darkroom_vignette_process(const float *in_buf,
                                int unbound);
 
 /*
+ * Sigmoid IOP — RGB-ratio path: luma-based tone curve + hyperbolic gamut compression.
+ *
+ * Replaces process_loglogistic_rgb_ratio in src/iop/sigmoid.c.
+ * white_target / black_target = module_data->white_target / black_target.
+ * paper_exp / film_fog / contrast_power / skew_power = from module_data.
+ */
+void darkroom_sigmoid_rgb_ratio_process(const float *in_buf,
+                                        float *out_buf,
+                                        size_t npixels,
+                                        float white_target,
+                                        float black_target,
+                                        float paper_exp,
+                                        float film_fog,
+                                        float contrast_power,
+                                        float skew_power);
+
+/*
+ * Sigmoid IOP — per-channel path: per-channel tone curve + hue preservation.
+ *
+ * Replaces process_loglogistic_per_channel in src/iop/sigmoid.c.
+ * pipe_to_base / base_to_rendering / rendering_to_pipe: each 16 floats
+ * (dt_colormatrix_t), pre-computed by C caller via _calculate_adjusted_primaries.
+ */
+void darkroom_sigmoid_per_channel_process(const float *in_buf,
+                                          float *out_buf,
+                                          size_t npixels,
+                                          float white_target,
+                                          float paper_exp,
+                                          float film_fog,
+                                          float contrast_power,
+                                          float skew_power,
+                                          float hue_preservation,
+                                          const float *pipe_to_base,
+                                          const float *base_to_rendering,
+                                          const float *rendering_to_pipe);
+
+/*
+ * RGB-levels IOP — per-channel or luma-linked black/white-point + gamma correction.
+ *
+ * Replaces the two DT_OMP_FOR loops in src/iop/rgblevels.c::process().
+ * mode: 0 = independent channels (INDEPENDENT or preserve_colors==NONE)
+ *       1 = linked via rgb_norm luma
+ * preserve_colors: dt_rgb_norm mode for linked path.
+ * min_levels / max_levels / inv_gamma: 3 floats each (R, G, B).
+ * lut_r/g/b: 65536 floats each (d->lut[0..2]).
+ */
+void darkroom_rgblevels_process(const float *in_buf,
+                                float *out_buf,
+                                size_t npixels,
+                                int mode,
+                                int preserve_colors,
+                                const float *min_levels,
+                                const float *max_levels,
+                                const float *inv_gamma,
+                                const float *lut_r,
+                                const float *lut_g,
+                                const float *lut_b);
+
+/*
  * Exposure IOP pixel loop.
  *
  * Replaces the inner loop in src/iop/exposure.c::process():

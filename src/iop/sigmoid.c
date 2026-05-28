@@ -27,6 +27,7 @@
 #include "gui/gtk.h"
 #include "gui/presets.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 
 #include <gtk/gtk.h>
 #include <stdlib.h>
@@ -581,76 +582,10 @@ void process_loglogistic_rgb_ratio(const dt_dev_pixelpipe_iop_t *piece,
   const float contrast_power = module_data->film_power;
   const float skew_power = module_data->paper_power;
 
-  DT_OMP_FOR()
-  for(size_t k = 0; k < 4 * npixels; k += 4)
-  {
-    const float *const restrict pix_in = in + k;
-    float *const restrict pix_out = out + k;
-    dt_aligned_pixel_t pre_out;
-    dt_aligned_pixel_t pix_in_strict_positive;
-
-    // Force negative values to zero
-    _desaturate_negative_values(pix_in, pix_in_strict_positive);
-
-    // Preserve color ratios by applying the tone curve on a luma estimate and then scale the RGB tripplet uniformly
-    const float luma = (pix_in_strict_positive[0] + pix_in_strict_positive[1] + pix_in_strict_positive[2]) / 3.0f;
-    const float mapped_luma
-        = _generalized_loglogistic_sigmoid(luma, white_target, paper_exp, film_fog, contrast_power, skew_power);
-
-    if(luma > 1e-9)
-    {
-      const float scaling_factor = mapped_luma / luma;
-      for_each_channel(c, aligned(pix_in_strict_positive, pix_out))
-      {
-        pre_out[c] = scaling_factor * pix_in_strict_positive[c];
-      }
-    }
-    else
-    {
-      for_each_channel(c, aligned(pix_in_strict_positive, pix_out))
-      {
-        pre_out[c] = mapped_luma;
-      }
-    }
-
-    // RGB index order sorted by value;
-    dt_iop_sigmoid_value_order_t pixel_value_order;
-    _pixel_channel_order(pre_out, &pixel_value_order);
-    const float pixel_min = pre_out[pixel_value_order.min];
-    const float pixel_max = pre_out[pixel_value_order.max];
-
-    // Chroma relative display gamut and scene "mapping" gamut.
-    const float epsilon = 1e-6;
-    const float display_border_vs_chroma_white
-        = (white_target - mapped_luma)
-          / (pixel_max - mapped_luma + epsilon); // "Distance" to max channel = white_target
-    const float display_border_vs_chroma_black
-        = (black_target - mapped_luma)
-          / (pixel_min - mapped_luma - epsilon); // "Distance" to min_channel = black_target
-    const float display_border_vs_chroma = fminf(display_border_vs_chroma_white, display_border_vs_chroma_black);
-    const float chroma_vs_mapping_border
-        = (mapped_luma - pixel_min) / (mapped_luma + epsilon); // "Distance" to min channel = 0.0
-
-    // Hyperbolic gamut compression
-    // Small chroma values, i.e., colors close to the acromatic axis are preserved while large chroma values are
-    // compressed.
-
-    const float pixel_chroma_adjustment = 1.0f / (chroma_vs_mapping_border * display_border_vs_chroma + epsilon);
-    const float hyperbolic_chroma = 2.0f * chroma_vs_mapping_border
-                                    / (1.0f - chroma_vs_mapping_border * chroma_vs_mapping_border + epsilon)
-                                    * pixel_chroma_adjustment;
-
-    const float hyperbolic_z = sqrtf(hyperbolic_chroma * hyperbolic_chroma + 1.0f);
-    const float chroma_factor = hyperbolic_chroma / (1.0f + hyperbolic_z) * display_border_vs_chroma;
-
-    for_each_channel(c, aligned(pre_out, pix_out))
-    {
-      pix_out[c] = mapped_luma + chroma_factor * (pre_out[c] - mapped_luma);
-    }
-
-    // Copy over the alpha channel
-    pix_out[3] = pix_in[3];
-  }
+  darkroom_sigmoid_rgb_ratio_process(
+      in, out, npixels,
+      white_target, black_target,
+      paper_exp, film_fog, contrast_power, skew_power);
 }
 
 // Linear interpolation of hue that also preserve sum of channels
@@ -724,40 +659,13 @@ void process_loglogistic_per_channel(dt_develop_t *dev,
   dt_colormatrix_t pipe_to_base, base_to_rendering, rendering_to_pipe;
   _calculate_adjusted_primaries(module_data, pipe_work_profile, base_profile, pipe_to_base, base_to_rendering, rendering_to_pipe);
 
-  DT_OMP_FOR()
-  for(size_t k = 0; k < 4 * npixels; k += 4)
-  {
-    const float *const restrict pix_in = in + k;
-    float *const restrict pix_out = out + k;
-    dt_aligned_pixel_t pix_in_base, pix_in_strict_positive;
-    dt_aligned_pixel_t per_channel;
-
-    // Convert to "base primaries"
-    dt_apply_transposed_color_matrix(pix_in, pipe_to_base, pix_in_base);
-
-    // Force negative values to zero
-    _desaturate_negative_values(pix_in_base, pix_in_strict_positive);
-
-    dt_aligned_pixel_t rendering_RGB;
-    dt_apply_transposed_color_matrix(pix_in_strict_positive, base_to_rendering, rendering_RGB);
-
-    for_each_channel(c, aligned(rendering_RGB, per_channel))
-    {
-      per_channel[c] = _generalized_loglogistic_sigmoid(rendering_RGB[c], white_target, paper_exp, film_fog,
-                                                        contrast_power, skew_power);
-    }
-
-    // Hue correction by scaling the middle value relative to the max and min values.
-    dt_iop_sigmoid_value_order_t pixel_value_order;
-    dt_aligned_pixel_t per_channel_hue_corrected;
-    _pixel_channel_order(rendering_RGB, &pixel_value_order);
-    _preserve_hue_and_energy(rendering_RGB, per_channel, per_channel_hue_corrected, pixel_value_order,
-                             hue_preservation);
-    dt_apply_transposed_color_matrix(per_channel_hue_corrected, rendering_to_pipe, pix_out);
-
-    // Copy over the alpha channel
-    pix_out[3] = pix_in[3];
-  }
+  darkroom_sigmoid_per_channel_process(
+      in, out, npixels,
+      white_target, paper_exp, film_fog, contrast_power, skew_power,
+      hue_preservation,
+      (const float *)pipe_to_base,
+      (const float *)base_to_rendering,
+      (const float *)rendering_to_pipe);
 }
 
 /** process, all real work is done here. */

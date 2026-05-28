@@ -19,6 +19,8 @@ pub mod primaries;
 pub mod profile_gamma;
 pub mod relight;
 pub mod rgbcurve;
+pub mod rgblevels;
+pub mod sigmoid;
 pub mod splittoning;
 pub mod tonecurve;
 pub mod velvia;

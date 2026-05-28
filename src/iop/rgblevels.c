@@ -26,6 +26,7 @@
 #include "gui/accelerators.h"
 #include "gui/color_picker_proxy.h"
 #include "libs/colorpicker.h"
+#include "rust_ffi/darkroom_core.h"
 
 #define DT_GUI_CURVE_EDITOR_INSET DT_PIXEL_APPLY_DPI(5)
 
@@ -1301,82 +1302,15 @@ void process(dt_iop_module_t *self,
   const size_t npixels = (size_t)roi_out->width * roi_out->height;
   const float *const restrict in = (const float*)ivoid;
   float *const restrict out = (float*)ovoid;
-  if(d->params.autoscale == DT_IOP_RGBLEVELS_INDEPENDENT_CHANNELS
-     || d->params.preserve_colors == DT_RGB_NORM_NONE)
-  {
-    const dt_aligned_pixel_t min_levels
-      = { d->params.levels[0][0], d->params.levels[1][0], d->params.levels[2][0], 0.0f };
-    const dt_aligned_pixel_t max_levels
-      = { d->params.levels[0][2], d->params.levels[1][2], d->params.levels[2][2], 1.0f };
-    DT_OMP_FOR()
-    for(int k = 0; k < 4U*npixels; k += 4)
-    {
-      for(int c = 0; c < 3; c++)
-      {
-        const float L_in = in[k+c];
-
-        if(L_in <= min_levels[c])
-        {
-          // Anything below the lower threshold just clips to zero
-          out[k+c] = 0.0f;
-        }
-        else if(L_in >= max_levels[c])
-        {
-          // above the upper limit we extrapolate using the gamma value
-          const float percentage = (L_in - min_levels[c]) * mult[c];
-          out[k+c] = powf(percentage, d->inv_gamma[c]);
-        }
-        else
-        {
-          // Within the expected input range we can use the lookup table
-          const float percentage = (L_in - min_levels[c]) * mult[c];
-          out[k+c] = d->lut[c][CLAMP((int)(percentage * 0x10000ul), 0, 0xffff)];
-        }
-      }
-    }
-  }
-  else
-  {
-    const int ch_levels = 0;
-    const float mult_ch = mult[ch_levels];
-    const float *const restrict levels = d->params.levels[ch_levels];
-    const float min_level = levels[0];
-    const float max_level = levels[2];
-    static const dt_aligned_pixel_t zero = { 0.0f, 0.0f, 0.0f, 0.0f };
-    DT_OMP_FOR()
-    for(int k = 0; k < 4U*npixels; k += 4)
-    {
-      const float lum = dt_rgb_norm(in+k, d->params.preserve_colors, work_profile);
-      if(lum > min_level)
-      {
-        float curve_lum;
-        const float percentage = (lum - min_level) * mult_ch;
-        if(lum >= max_level)
-        {
-          curve_lum = powf(percentage, d->inv_gamma[ch_levels]);
-        }
-        else
-        {
-          // Within the expected input range we can use the lookup table
-          curve_lum = d->lut[ch_levels][CLAMP((int)(percentage * 0x10000ul), 0, 0xffff)];
-        }
-
-        const float ratio = curve_lum / lum;
-        dt_aligned_pixel_t res;
-
-        for_each_channel(c,aligned(in,out:16))
-        {
-          res[c] = (ratio * in[k+c]);
-        }
-        copy_pixel_nontemporal(out + k, res);
-      }
-      else
-      {
-        copy_pixel_nontemporal(out + k, zero);
-      }
-    }
-    dt_omploop_sfence(); // ensure nontemporal writes are flushed before continuing
-  }
+  const float min_levels[3] = { d->params.levels[0][0], d->params.levels[1][0], d->params.levels[2][0] };
+  const float max_levels[3] = { d->params.levels[0][2], d->params.levels[1][2], d->params.levels[2][2] };
+  const int mode = (d->params.autoscale == DT_IOP_RGBLEVELS_INDEPENDENT_CHANNELS
+                    || d->params.preserve_colors == DT_RGB_NORM_NONE) ? 0 : 1;
+  darkroom_rgblevels_process(
+      in, out, npixels,
+      mode, (int)d->params.preserve_colors,
+      min_levels, max_levels, d->inv_gamma,
+      d->lut[0], d->lut[1], d->lut[2]);
 }
 
 #ifdef HAVE_OPENCL
