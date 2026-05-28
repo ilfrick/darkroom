@@ -489,6 +489,55 @@ void darkroom_exposure_process(const float *in_buf,
                                float scale);
 
 /*
+ * Low-pass IOP pixel loop (contrast + brightness LUT, saturation on a/b).
+ *
+ * Replaces the DT_OMP_FOR loop in src/iop/lowpass.c::process() (after the blur).
+ * out_buf must already contain the gaussian/bilateral blurred Lab image.
+ *
+ * ctable/ltable: float[0x10000] LUTs for contrast/brightness (L in [0..100] → new L)
+ * cunbounded/lunbounded: float[3] extrapolation coeffs (dt_iop_eval_exp) for L >= 100
+ * saturation: d->saturation (multiplier on a/b channels)
+ * lab_min_ab/lab_max_ab: ±128 normally, ±FLT_MAX when unbound=1
+ * Alpha is copied from in_buf (original pre-blur pixel).
+ */
+void darkroom_lowpass_process(const float *in_buf,
+                              float *out_buf,
+                              size_t npixels,
+                              const float *ctable,
+                              const float *cunbounded,
+                              const float *ltable,
+                              const float *lunbounded,
+                              float saturation,
+                              float lab_min_ab,
+                              float lab_max_ab);
+
+/*
+ * Color Balance IOP pixel loop (LEGACY / LGG / SOP modes).
+ *
+ * Replaces the DT_OMP_FOR block in src/iop/colorbalance.c::process().
+ *
+ * mode: 0=LEGACY, 1=LIFT_GAMMA_GAIN, 2=SLOPE_OFFSET_POWER
+ * param1[4]: lift (LEGACY/LGG) or lift_sop (SOP)
+ * param2[4]: gamma_inv_legacy / gamma_inv_lgg (LEGACY/LGG) or gamma_sop (SOP)
+ * gain[4]:   pre-computed gain vector
+ * grey = d->grey / 100.0f
+ * saturation = d->saturation; saturation_out = d->saturation_out
+ * contrast_power[4]: { 1/d->contrast, ... } — all four elements equal
+ * (grey/saturation/saturation_out/contrast_power are ignored in LEGACY mode)
+ */
+void darkroom_colorbalance_process(const float *in_buf,
+                                   float *out_buf,
+                                   size_t npixels,
+                                   int mode,
+                                   const float *param1,
+                                   const float *param2,
+                                   const float *gain,
+                                   float grey,
+                                   float saturation,
+                                   float saturation_out,
+                                   const float *contrast_power);
+
+/*
  * Soften IOP initial pixel loop.
  *
  * Replaces the DT_OMP_FOR loop in src/iop/soften.c::process() (before dt_box_mean).

@@ -5,7 +5,9 @@
 
 pub mod basicadj;
 pub mod channelmixer;
+pub mod colorbalance;
 pub mod filmic;
+pub mod lowpass;
 pub mod shadhi;
 pub mod soften;
 pub mod colisa;

@@ -34,6 +34,7 @@
 #include "gui/gtk.h"
 #include "gui/presets.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 #include <assert.h>
 #include <gtk/gtk.h>
 #include <stdlib.h>
@@ -432,22 +433,10 @@ void process(dt_iop_module_t *self,
   const size_t npixels = width * height;
   const float saturation = data->saturation;
 
-  DT_OMP_FOR()
-  for(size_t k = 0; k < 4*npixels; k += 4)
-  {
-    // apply contrast and brightness curves to L channel
-    out[k + 0] = (out[k + 0] < 100.0f)
-                      ? data->ctable[CLAMP((int)(out[k + 0] / 100.0f * 0x10000ul), 0, 0xffff)]
-                      : dt_iop_eval_exp(data->cunbounded_coeffs, out[k + 0] / 100.0f);
-    out[k + 0] = (out[k + 0] < 100.0f)
-                      ? data->ltable[CLAMP((int)(out[k + 0] / 100.0f * 0x10000ul), 0, 0xffff)]
-                      : dt_iop_eval_exp(data->lunbounded_coeffs, out[k + 0] / 100.0f);
-    // the following will not clip in unbound case (see definition of Labmax/Labmin)
-    out[k + 1] = CLAMPF(out[k + 1] * saturation, Labmin[1], Labmax[1]);
-    out[k + 2] = CLAMPF(out[k + 2] * saturation, Labmin[2], Labmax[2]);
-    // copy alpha channel to output
-    out[k + 3] = in[k + 3];
-  }
+  darkroom_lowpass_process(in, out, npixels,
+                           data->ctable, data->cunbounded_coeffs,
+                           data->ltable, data->lunbounded_coeffs,
+                           saturation, Labmin[1], Labmax[1]);
 }
 
 void commit_params(dt_iop_module_t *self,

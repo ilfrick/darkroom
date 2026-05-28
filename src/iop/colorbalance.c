@@ -36,6 +36,7 @@ http://www.youtube.com/watch?v=JVoUgR6bhBc
 #include "gui/presets.h"
 #include "gui/color_picker_proxy.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 
 #include <stdlib.h>
 
@@ -737,29 +738,18 @@ void process(dt_iop_module_t *self,
   const int mode = d->mode;
   // figure out the number of pixels each thread needs to process,
   // rounded up to a multiple of the CPU's cache line size
-  const size_t nthreads = dt_get_num_threads();
-  const size_t chunksize = dt_cacheline_chunks(npixels, nthreads);
-  DT_OMP_FOR()
-  for(size_t chunkstart = 0; chunkstart < npixels; chunkstart += chunksize)
   {
-    size_t end = MIN(chunkstart + chunksize, npixels);
+    const float *p1, *p2;
     switch(mode)
     {
-      case LEGACY:
-        _process_legacy(in + 4*chunkstart, out + 4*chunkstart, end-chunkstart, lift, gamma_inv_legacy, gain);
-        break;
-      case LIFT_GAMMA_GAIN:
-        _process_lgg(in + 4*chunkstart, out + 4*chunkstart, end-chunkstart, lift, gamma_inv_lgg, gain,
-                     grey, saturation, saturation_out, contrast_power);
-        break;
-      case SLOPE_OFFSET_POWER:
-        _process_sop(in + 4*chunkstart, out + 4*chunkstart, end-chunkstart,
-                     lift_sop, gamma_sop, gain, grey, saturation,
-                     saturation_out, contrast, contrast_power);
-        break;
+      case LEGACY:             p1 = lift;     p2 = gamma_inv_legacy; break;
+      case LIFT_GAMMA_GAIN:    p1 = lift;     p2 = gamma_inv_lgg;    break;
+      case SLOPE_OFFSET_POWER: p1 = lift_sop; p2 = gamma_sop;        break;
+      default: return;
     }
+    darkroom_colorbalance_process(in, out, npixels, mode, p1, p2, gain,
+                                  grey, saturation, saturation_out, contrast_power);
   }
-  dt_omploop_sfence();
 }
 
 #ifdef HAVE_OPENCL
