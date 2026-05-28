@@ -5,6 +5,7 @@
 
 pub mod basicadj;
 pub mod channelmixer;
+pub mod filmic;
 pub mod colisa;
 pub mod colorcontrast;
 pub mod colorcorrection;

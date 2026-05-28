@@ -34,6 +34,7 @@
 #include "gui/presets.h"
 #include "gui/color_picker_proxy.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 
 
 #include "develop/imageop.h"
@@ -539,13 +540,11 @@ void process(dt_iop_module_t *self,
     data->output_power, data->output_power
   };
 
-  DT_OMP_FOR()
-  for(size_t k = 0; k < (size_t)4 * npixels; k += 4)
-  {
-    _process_pixel(in + k, out +k, grey_source, black_source, inv_dynamic_range, output_power,
-                   saturation, EPS, desaturate, preserve_color, data);
-  }
-  dt_omploop_sfence();
+  darkroom_filmic_process(in, out, npixels,
+                          grey_source, black_source, inv_dynamic_range,
+                          output_power[0], saturation, EPS,
+                          desaturate, preserve_color,
+                          data->table, data->grad_2);
 }
 
 #ifdef HAVE_OPENCL

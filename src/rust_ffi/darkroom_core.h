@@ -488,6 +488,32 @@ void darkroom_exposure_process(const float *in_buf,
                                float black,
                                float scale);
 
+/*
+ * Filmic IOP pixel loop (Lab-space filmic tone-mapping).
+ *
+ * Replaces the DT_OMP_FOR loop in src/iop/filmic.c::process().
+ * All parameters are pre-computed from dt_iop_filmic_data_t by the caller.
+ * table and grad_2 are float[0x10000] LUTs from data->table / data->grad_2.
+ * output_power is data->output_power (scalar, applied per channel).
+ * desaturate = (data->global_saturation != 100.0f).
+ * saturation  = data->global_saturation / 100.0f.
+ * eps         = powf(2.0f, -16).
+ * Output alpha is always 0 (matching Lab copy_pixel_nontemporal behaviour).
+ */
+void darkroom_filmic_process(const float *in_buf,
+                             float *out_buf,
+                             size_t npixels,
+                             float grey_source,
+                             float black_source,
+                             float inv_dynamic_range,
+                             float output_power,
+                             float saturation,
+                             float eps,
+                             int desaturate,
+                             int preserve_color,
+                             const float *table,
+                             const float *grad_2);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
