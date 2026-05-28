@@ -29,6 +29,7 @@
 #include "gui/accelerators.h"
 #include "gui/color_picker_proxy.h"
 #include "develop/tiling.h"
+#include "rust_ffi/darkroom_core.h"
 
 DT_MODULE_INTROSPECTION(2, dt_iop_basicadj_params_t)
 
@@ -1463,80 +1464,23 @@ void process(dt_iop_module_t *self, dt_dev_pixelpipe_iop_t *piece, const void *c
 
   const float *const in = (const float *const)ivoid;
   float *const out = (float *const)ovoid;
-  const size_t stride = (size_t)roi_out->height * roi_out->width * ch;
+  const size_t npixels = (size_t)roi_out->height * roi_out->width;
 
-  DT_OMP_FOR()
-  for(size_t k = 0; k < stride; k += ch)
+  // Luminance coefficients: Y-row of the RGB→XYZ matrix, or Rec.709 fallback
+  float lum_r = 0.2126f, lum_g = 0.7152f, lum_b = 0.0722f;
+  if(work_profile && !work_profile->nonlinearlut)
   {
-    for(size_t c = 0; c < 3; c++)
-    {
-      // exposure
-      out[k + c] = (in[k + c] - black_point) * scale;
-    }
-
-    // highlight compression
-    if(process_hlcompr)
-    {
-      const float lum = (work_profile) ? dt_ioppr_get_rgb_matrix_luminance(out + k,
-                                                                           work_profile->matrix_in,
-                                                                           work_profile->lut_in,
-                                                                           work_profile->unbounded_coeffs_in,
-                                                                           work_profile->lutsize,
-                                                                           work_profile->nonlinearlut)
-                                       : dt_camera_rgb_luminance(out + k);
-      if(lum > 0.f)
-      {
-        const float ratio = hlcurve(lum, hlcomp, hlrange);
-
-        for(size_t c = 0; c < 3; c++)
-        {
-          out[k + c] = (ratio * out[k + c]);
-        }
-      }
-    }
-
-    for(size_t c = 0; c < 3; c++)
-    {
-      // gamma
-      if(process_gamma && out[k + c] > 0.f) out[k + c] = get_lut_gamma(out[k + c], gamma, d->lut_gamma);
-
-      // contrast
-      if(plain_contrast && out[k + c] > 0.f)
-        out[k + c] = get_lut_contrast(out[k + c], contrast, middle_grey, inv_middle_grey, d->lut_contrast);
-    }
-
-    // contrast (with preserve colors)
-    if(preserve_colors != DT_RGB_NORM_NONE)
-    {
-      float ratio = 1.f;
-      const float lum = dt_rgb_norm(out + k, preserve_colors, work_profile);
-      if(lum > 0.f)
-      {
-        const float contrast_lum = powf(lum * inv_middle_grey, contrast) * middle_grey;
-        ratio = contrast_lum / lum;
-      }
-
-      for(size_t c = 0; c < 3; c++)
-      {
-        out[k + c] = (ratio * out[k + c]);
-      }
-    }
-
-    // saturation
-    if(process_saturation_vibrance)
-    {
-      const float average = (out[k] + out[k+1] + out[k+2]) / 3;
-      const float delta = sqrtf( (average-out[k])*(average-out[k])+(average-out[k+1])*(average-out[k+1])+(average-out[k+2])*(average-out[k+2]));
-      const float P = vibrance * (1 - powf(delta, fabsf(vibrance)));
-
-      for(size_t c = 0; c < 3; c++)
-      {
-        out[k + c] = average + (saturation + P) * (out[k+c] - average);
-      }
-    }
-
-    out[k + 3] = in[k + 3];
+    lum_r = work_profile->matrix_in[0][1];
+    lum_g = work_profile->matrix_in[1][1];
+    lum_b = work_profile->matrix_in[2][1];
   }
+
+  darkroom_basicadj_process(in, out, npixels,
+      black_point, scale,
+      process_hlcompr, hlcomp, hlrange, lum_r, lum_g, lum_b,
+      process_gamma, gamma, d->lut_gamma,
+      plain_contrast, preserve_colors, contrast, middle_grey, inv_middle_grey, d->lut_contrast,
+      process_saturation_vibrance, saturation, vibrance);
 }
 
 #undef exposure2white

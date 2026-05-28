@@ -413,6 +413,37 @@ void darkroom_rgblevels_process(const float *in_buf,
                                 const float *lut_b);
 
 /*
+ * Basic Adjustments IOP pixel loop.
+ *
+ * Replaces the DT_OMP_FOR loop in src/iop/basicadj.c::process().
+ * lut_gamma and lut_contrast are 65536-entry float arrays.
+ * plain_contrast and preserve_colors are mutually exclusive (C enforces this).
+ */
+void darkroom_basicadj_process(const float *in_buf,
+                               float *out_buf,
+                               size_t npixels,
+                               float black_point,
+                               float scale,
+                               int process_hlcompr,
+                               float hlcomp,
+                               float hlrange,
+                               float lum_r,
+                               float lum_g,
+                               float lum_b,
+                               int process_gamma,
+                               float gamma,
+                               const float *lut_gamma,
+                               int plain_contrast,
+                               int preserve_colors,
+                               float contrast,
+                               float middle_grey,
+                               float inv_middle_grey,
+                               const float *lut_contrast,
+                               int process_saturation_vibrance,
+                               float saturation,
+                               float vibrance);
+
+/*
  * Zonesystem IOP pixel loop.
  *
  * Replaces the DT_OMP_FOR loop in src/iop/zonesystem.c::process().
