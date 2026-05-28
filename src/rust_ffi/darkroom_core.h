@@ -413,6 +413,35 @@ void darkroom_rgblevels_process(const float *in_buf,
                                 const float *lut_b);
 
 /*
+ * Zonesystem IOP pixel loop.
+ *
+ * Replaces the DT_OMP_FOR loop in src/iop/zonesystem.c::process().
+ * zonemap_offset and zonemap_scale are arrays of `size` floats.
+ */
+void darkroom_zonesystem_process(const float *in_buf,
+                                 float *out_buf,
+                                 size_t npixels,
+                                 float rzscale,
+                                 const float *zonemap_offset,
+                                 const float *zonemap_scale,
+                                 size_t size);
+
+/*
+ * Overlay IOP pixel loop.
+ *
+ * Replaces the DT_OMP_FOR(collapse(2)) loop in src/iop/overlay.c::process().
+ * image is a Cairo ARGB32 buffer (byte order [B, G, R, A]) with `stride` bytes per row.
+ * opacity is pre-divided by 100 (range 0..1).
+ */
+void darkroom_overlay_process(const float *in_buf,
+                              float *out_buf,
+                              size_t width,
+                              size_t height,
+                              const unsigned char *image,
+                              size_t stride,
+                              float opacity);
+
+/*
  * Exposure IOP pixel loop.
  *
  * Replaces the inner loop in src/iop/exposure.c::process():

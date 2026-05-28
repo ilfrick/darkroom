@@ -34,6 +34,7 @@
 #include "gui/gtk.h"
 #include "gui/presets.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 
 #include <librsvg/rsvg.h>
 // ugh, ugly hack. why do people break stuff all the time?
@@ -264,17 +265,8 @@ void process(dt_iop_module_t *self, dt_dev_pixelpipe_iop_t *piece, const void *c
   float *const restrict out = (float *const)ovoid;
   const size_t npixels = (size_t)roi_out->width * roi_out->height;
 
-  DT_OMP_FOR()
-  for(size_t k = 0; k < (size_t)4 * npixels; k += 4)
-  {
-    /* remap lightness into zonemap and apply lightness */
-    const int rz = CLAMPS(in[k] * d->rzscale, 0, size - 2); // zone index
-    const float zs = ((rz > 0) ? (d->zonemap_offset[rz] / in[k]) : 0) + d->zonemap_scale[rz];
-    for_each_channel(c,aligned(in,out))
-    {
-      out[k+c] = in[k+c] * zs;
-    }
-  }
+  darkroom_zonesystem_process(in, out, npixels, d->rzscale,
+                              d->zonemap_offset, d->zonemap_scale, (size_t)size);
 
   process_common_cleanup(self, piece, ivoid, ovoid, roi_in, roi_out);
 }

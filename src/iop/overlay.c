@@ -31,6 +31,7 @@
 #include "gui/drag_and_drop.h"
 #include "gui/gtk.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 
 #include <assert.h>
 #include <gtk/gtk.h>
@@ -656,22 +657,8 @@ void process(dt_iop_module_t *self,
 
   const float opacity = data->opacity / 100.0f;
 
-  DT_OMP_FOR(collapse(2))
-  for(int y = 0; y < roi_out->height; y++)
-    for(int x = 0; x < roi_out->width; x++)
-    {
-      const int    j = y * roi_out->width + x;
-      const float *i = in  + ch * j;
-      float       *o = out + ch * j;
-      // Cairo ARGB32 (little-endian): byte order is [B, G, R, A]
-      const guint8 *s = image + (size_t)y * stride + (size_t)x * 4;
-
-      const float alpha = (s[3] / 255.0f) * opacity;
-      o[0] = (1.0f - alpha) * i[0] + opacity * s[2] / 255.0f;
-      o[1] = (1.0f - alpha) * i[1] + opacity * s[1] / 255.0f;
-      o[2] = (1.0f - alpha) * i[2] + opacity * s[0] / 255.0f;
-      o[3] = i[3];
-    }
+  darkroom_overlay_process(in, out, (size_t)roi_out->width, (size_t)roi_out->height,
+                           image, (size_t)stride, opacity);
 
   g_free(image);
 }
