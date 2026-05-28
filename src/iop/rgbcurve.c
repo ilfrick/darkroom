@@ -28,6 +28,7 @@
 #include "gui/presets.h"
 #include "gui/accelerators.h"
 #include "libs/colorpicker.h"
+#include "rust_ffi/darkroom_core.h"
 
 #define DT_GUI_CURVE_EDITOR_INSET DT_PIXEL_APPLY_DPI(1)
 #define DT_IOP_RGBCURVE_RES 256
@@ -1896,48 +1897,16 @@ void process(dt_iop_module_t *self,
   const _curve_table_ptr restrict table = d->table;
   const _coeffs_table_ptr restrict unbounded_coeffs = d->unbounded_coeffs;
 
-  DT_OMP_FOR()
-  for(int y = 0; y < 4*npixels; y += 4)
-  {
-    if(autoscale == DT_S_SCALE_MANUAL_RGB)
-    {
-      out[y+0] = (in[y+0] < xm_L) ? table[DT_IOP_RGBCURVE_R][CLAMP((int)(in[y+0] * 0x10000ul), 0, 0xffff)]
-                                  : dt_iop_eval_exp(unbounded_coeffs[DT_IOP_RGBCURVE_R], in[y+0]);
-      out[y+1] = (in[y+1] < xm_g) ? table[DT_IOP_RGBCURVE_G][CLAMP((int)(in[y+1] * 0x10000ul), 0, 0xffff)]
-                                  : dt_iop_eval_exp(unbounded_coeffs[DT_IOP_RGBCURVE_G], in[y+1]);
-      out[y+2] = (in[y+2] < xm_b) ? table[DT_IOP_RGBCURVE_B][CLAMP((int)(in[y+2] * 0x10000ul), 0, 0xffff)]
-                                  : dt_iop_eval_exp(unbounded_coeffs[DT_IOP_RGBCURVE_B], in[y+2]);
-    }
-    else if(autoscale == DT_S_SCALE_AUTOMATIC_RGB)
-    {
-      if(d->params.preserve_colors == DT_RGB_NORM_NONE)
-      {
-        for(int c = 0; c < 3; c++)
-        {
-          out[y+c] = (in[y+c] < xm_L)
-            ? table[DT_IOP_RGBCURVE_R][CLAMP((int)(in[y+c] * 0x10000ul), 0, 0xffff)]
-            : dt_iop_eval_exp(unbounded_coeffs[DT_IOP_RGBCURVE_R], in[y+c]);
-        }
-      }
-      else
-      {
-        float ratio = 1.f;
-        const float lum = dt_rgb_norm(in + y, d->params.preserve_colors, work_profile);
-        if(lum > 0.f)
-        {
-          const float curve_lum = (lum < xm_L)
-            ? table[DT_IOP_RGBCURVE_R][CLAMP((int)(lum * 0x10000ul), 0, 0xffff)]
-            : dt_iop_eval_exp(unbounded_coeffs[DT_IOP_RGBCURVE_R], lum);
-          ratio = curve_lum / lum;
-        }
-        for(size_t c = 0; c < 3; c++)
-        {
-          out[y+c] = (ratio * in[y+c]);
-        }
-      }
-    }
-    out[y+3] = in[y+3];
-  }
+  darkroom_rgbcurve_process(
+      in, out, npixels,
+      d->table[DT_IOP_RGBCURVE_R],
+      d->table[DT_IOP_RGBCURVE_G],
+      d->table[DT_IOP_RGBCURVE_B],
+      d->unbounded_coeffs[DT_IOP_RGBCURVE_R],
+      d->unbounded_coeffs[DT_IOP_RGBCURVE_G],
+      d->unbounded_coeffs[DT_IOP_RGBCURVE_B],
+      xm_L, xm_g, xm_b,
+      (int)autoscale, (int)d->params.preserve_colors);
 }
 
 #undef DT_GUI_CURVE_EDITOR_INSET

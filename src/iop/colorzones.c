@@ -28,6 +28,7 @@
 #include "gui/color_picker_proxy.h"
 #include "gui/presets.h"
 #include "libs/colorpicker.h"
+#include "rust_ffi/darkroom_core.h"
 
 DT_MODULE_INTROSPECTION(5, dt_iop_colorzones_params_t)
 
@@ -483,43 +484,12 @@ void process_v1(dt_iop_module_t *self,
 {
   const dt_iop_colorzones_data_t *d = piece->data;
 
-  const int ch = piece->colors;
-  const float normalize_C = 1.f / (128.0f * M_SQRT2_F);
-
-  DT_OMP_FOR()
-  for(size_t k = 0; k < (size_t)roi_out->width * roi_out->height; k++)
-  {
-    float *in = (float *)ivoid + ch * k;
-    float *out = (float *)ovoid + ch * k;
-
-    dt_aligned_pixel_t LCh;
-
-    dt_Lab_2_LCH(in, LCh);
-
-    float select = 0.0f;
-    switch(d->channel)
-    {
-      case DT_IOP_COLORZONES_L:
-        select = LCh[0] * 0.01f;
-        break;
-      case DT_IOP_COLORZONES_C:
-        select = LCh[1] * normalize_C;
-        break;
-      case DT_IOP_COLORZONES_h:
-      default:
-        select = LCh[2];
-        break;
-    }
-    select = CLAMP(select, 0.f, 1.f);
-
-    LCh[0] *= powf(2.0f, 4.0f * (lookup(d->lut[0], select) - .5f));
-    LCh[1] *= 2.f * lookup(d->lut[1], select);
-    LCh[2] += lookup(d->lut[2], select) - .5f;
-
-    dt_LCH_2_Lab(LCh, out);
-
-    out[3] = in[3];
-  }
+  darkroom_colorzones_process(
+      (const float *)ivoid, (float *)ovoid,
+      (size_t)roi_out->width * roi_out->height,
+      1, /* flat/v1: non-zero mode */
+      (int)d->channel,
+      d->lut[0], d->lut[1], d->lut[2]);
 }
 
 void process_v3(dt_iop_module_t *self,
@@ -530,42 +500,12 @@ void process_v3(dt_iop_module_t *self,
                 const dt_iop_roi_t *const roi_out)
 {
   const dt_iop_colorzones_data_t *d = piece->data;
-  const int ch = piece->colors;
-  DT_OMP_FOR()
-  for(size_t k = 0; k < (size_t)roi_out->width * roi_out->height; k++)
-  {
-    float *in = (float *)ivoid + ch * k;
-    float *out = (float *)ovoid + ch * k;
-    const float a = in[1], b = in[2];
-    const float h = fmodf(atan2f(b, a) + DT_2PI_F, DT_2PI_F) / DT_2PI_F;
-    const float C = dt_fast_hypotf(b, a);
-    float select = 0.0f;
-    float blend = 0.0f;
-    switch(d->channel)
-    {
-      case DT_IOP_COLORZONES_L:
-        select = fminf(1.0f, in[0] / 100.0f);
-        break;
-      case DT_IOP_COLORZONES_C:
-        select = fminf(1.0f, C / 128.0f);
-        break;
-      default:
-      case DT_IOP_COLORZONES_h:
-        select = h;
-        blend = sqrf(1.0f - C / 128.0f);
-        break;
-    }
-    const float Lm = (blend * .5f + (1.0f - blend) * lookup(d->lut[0], select)) - .5f;
-    const float hm = (blend * .5f + (1.0f - blend) * lookup(d->lut[2], select)) - .5f;
-    blend *= blend; // saturation isn't as prone to artifacts:
-    // const float Cm = 2.0 * (blend*.5f + (1.0f-blend)*lookup(d->lut[1], select));
-    const float Cm = 2.0f * lookup(d->lut[1], select);
-    const float L = in[0] * powf(2.0f, 4.0f * Lm);
-    out[0] = L;
-    out[1] = cosf(DT_2PI_F * (h + hm)) * Cm * C;
-    out[2] = sinf(DT_2PI_F * (h + hm)) * Cm * C;
-    out[3] = in[3];
-  }
+  darkroom_colorzones_process(
+      (const float *)ivoid, (float *)ovoid,
+      (size_t)roi_out->width * roi_out->height,
+      0, /* smooth/v3: DT_IOP_COLORZONES_MODE_SMOOTH = 0 */
+      (int)d->channel,
+      d->lut[0], d->lut[1], d->lut[2]);
 }
 
 void process(dt_iop_module_t *self,

@@ -287,6 +287,73 @@ void darkroom_grain_process(const float *in_buf,
                             const float *grain_lut);
 
 /*
+ * RGB-curve IOP — per-channel or linked LUT tone mapping.
+ *
+ * Replaces the OMP loop in src/iop/rgbcurve.c::process().
+ * autoscale: 0 = AUTOMATIC_RGB (linked, R curve applied to all channels)
+ *            1 = MANUAL_RGB (independent per-channel curves)
+ * preserve_colors: 0 = NONE, non-zero = luma-norm mode (see color.rs rgb_norm).
+ * table_r/g/b: 65536 floats each; unbounded_r/g/b: 3 floats each.
+ * xm_r/g/b = 1.0f / unbounded_coeffs[ch][0], pre-computed by caller.
+ */
+void darkroom_rgbcurve_process(const float *in_buf,
+                               float *out_buf,
+                               size_t npixels,
+                               const float *table_r,
+                               const float *table_g,
+                               const float *table_b,
+                               const float *unbounded_r,
+                               const float *unbounded_g,
+                               const float *unbounded_b,
+                               float xm_r,
+                               float xm_g,
+                               float xm_b,
+                               int autoscale,
+                               int preserve_colors);
+
+/*
+ * Color-zones IOP — luminance/chroma/hue equalizer in LCH space.
+ *
+ * Replaces process_v1/process_v3 in src/iop/colorzones.c.
+ * mode: 0 = smooth/v3 (DT_IOP_COLORZONES_MODE_SMOOTH), non-zero = flat/v1.
+ * channel: 0 = L, 1 = C, 2 = h (drives LUT selection index).
+ * lut_l/a/b: each DT_IOP_COLORZONES_LUT_RES (65536) floats — d->lut[0..2].
+ */
+void darkroom_colorzones_process(const float *in_buf,
+                                 float *out_buf,
+                                 size_t npixels,
+                                 int mode,
+                                 int channel,
+                                 const float *lut_l,
+                                 const float *lut_a,
+                                 const float *lut_b);
+
+/*
+ * Vignette IOP — radial brightness/saturation falloff with optional dithering.
+ *
+ * Replaces the OMP loop in src/iop/vignette.c::process().
+ * All geometry scalars must be pre-computed by the C caller.
+ * dither_amt: 0.0 = off, 1/256 = 8-bit, 1/65536 = 16-bit.
+ * unbound: 0 = clamp output to [0,1], non-zero = no clamp.
+ */
+void darkroom_vignette_process(const float *in_buf,
+                               float *out_buf,
+                               int width,
+                               int height,
+                               float xscale,
+                               float yscale,
+                               float roi_center_x,
+                               float roi_center_y,
+                               float dscale,
+                               float fscale,
+                               float exp1,
+                               float exp2,
+                               float dither_amt,
+                               float brightness,
+                               float saturation,
+                               int unbound);
+
+/*
  * Exposure IOP pixel loop.
  *
  * Replaces the inner loop in src/iop/exposure.c::process():

@@ -8,6 +8,7 @@ pub mod colisa;
 pub mod colorcontrast;
 pub mod colorcorrection;
 pub mod colorize;
+pub mod colorzones;
 pub mod exposure;
 pub mod grain;
 pub mod graduatednd;
@@ -17,10 +18,12 @@ pub mod negadoctor;
 pub mod primaries;
 pub mod profile_gamma;
 pub mod relight;
+pub mod rgbcurve;
 pub mod splittoning;
 pub mod tonecurve;
 pub mod velvia;
 pub mod vibrance;
+pub mod vignette;
 
 use crate::{params::IopParams, roi::RoiIn, Result};
 

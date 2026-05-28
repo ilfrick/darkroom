@@ -34,6 +34,7 @@
 #include "gui/gtk.h"
 #include "gui/presets.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 #include <gtk/gtk.h>
 #include <inttypes.h>
 
@@ -769,81 +770,18 @@ void process(dt_iop_module_t *self,
       dither = 0.0f;
   }
 
-  unsigned int *const tea_states = alloc_tea_states(dt_get_num_threads());
   const float brightness = data->brightness;
   const float saturation = data->saturation;
 
-  DT_OMP_FOR()
-  for(int j = 0; j < roi_out->height; j++)
-  {
-    const size_t k = (size_t)4 * roi_out->width * j;
-    const float *in = (const float *)ivoid + k;
-    float *out = (float *)ovoid + k;
-    unsigned int *tea_state = get_tea_state(tea_states,dt_get_thread_num());
-    tea_state[0] = j * roi_out->height;
-    for(int i = 0; i < roi_out->width; i++)
-    {
-      // current pixel coord translated to local coord
-      const dt_iop_vector_2d_t pv
-          = { fabsf(i * xscale - roi_center_scaled.x), fabsf(j * yscale - roi_center_scaled.y) };
-
-      // Calculate the pixel weight in vignette. Length from center to pv:
-      const float cplen = powf(powf(pv.x, exp1) + powf(pv.y, exp1), exp2);
-      float weight = 0.f;
-      float dith = 0.0f;
-
-      // pixel is outside the inner vignette circle, lets calculate weight of vignette
-      if(cplen >= dscale)
-      {
-        weight = ((cplen - dscale) / fscale);
-        if(weight >= 1.0f)
-          weight = 1.0f;
-        else if(weight <= 0.0f)
-          weight = 0.0f;
-        else if(dither != 0.0f)
-        {
-          // only bother computing the random number if dithering is enabled
-          weight = 0.5f - cosf(M_PI_F * weight) / 2.0f;
-          encrypt_tea(tea_state);
-          dith = dither * tpdf(tea_state[0]);
-        }
-      }
-
-      // Let's apply weighted effect on brightness and desaturation
-      dt_aligned_pixel_t col;
-      copy_pixel(col, in + 4*i);
-      if(weight > 0.0f)
-      {
-        // Then apply falloff vignette
-        if(brightness < 0.0f)
-        {
-          const float falloff = (1.0f + (weight * brightness));
-          for_each_channel(c)
-            col[c] = col[c] * falloff + dith;
-        }
-        else
-        {
-          const float falloff = (weight * brightness);
-          for_each_channel(c)
-            col[c] = col[c] + falloff + dith;
-        }
-        for_each_channel(c)
-          col[c] = unbound ? col[c] : CLIP(col[c]);
-
-        // apply saturation
-        const float mv = (col[0] + col[1] + col[2]) / 3.0f;
-        const float wss = weight * saturation;
-        for_each_channel(c)
-        {
-          col[c] = col[c] - ((mv - col[c]) * wss);
-          col[c] = unbound ? col[c] : CLIP(col[c]);
-        }
-      }
-      copy_pixel_nontemporal(out + 4*i, col) ;
-    }
-  }
-
-  free_tea_states(tea_states);
+  darkroom_vignette_process(
+      (const float *)ivoid, (float *)ovoid,
+      roi_out->width, roi_out->height,
+      xscale, yscale,
+      roi_center_scaled.x, roi_center_scaled.y,
+      dscale, fscale,
+      exp1, exp2,
+      dither, brightness, saturation,
+      unbound ? 1 : 0);
 }
 
 
