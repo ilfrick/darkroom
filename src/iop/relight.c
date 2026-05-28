@@ -122,11 +122,6 @@ void process(dt_iop_module_t *self,
 
   dt_iop_relight_data_t *data = piece->data;
 
-  // Precalculate parameters for gauss function
-  const float a = 1.0f;                           // Height of top
-  const float b = -1.0f + (data->center * 2.0f);  // Center of top
-  const float c = (data->width / 10.0f) / 2.0f;   // Width
-
   const size_t npixels = (size_t)roi_out->width * roi_out->height;
   darkroom_relight_process((const float *)ivoid, (float *)ovoid, npixels, data->ev, data->center, data->width);
 }
