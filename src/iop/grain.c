@@ -356,30 +356,6 @@ static void evaluate_grain_lut(float *grain_lut, const float mb)
   }
 }
 
-static float dt_lut_lookup_2d_1c(const float *grain_lut, const float x, const float y)
-{
-  const float _x = CLAMPS((x + 0.5f) * (GRAIN_LUT_SIZE - 1), 0, GRAIN_LUT_SIZE - 1);
-  const float _y = CLAMPS(y * (GRAIN_LUT_SIZE - 1), 0, GRAIN_LUT_SIZE - 1);
-
-  const int _x0 = _x < GRAIN_LUT_SIZE - 2 ? _x : GRAIN_LUT_SIZE - 2;
-  const int _y0 = _y < GRAIN_LUT_SIZE - 2 ? _y : GRAIN_LUT_SIZE - 2;
-
-  const int _x1 = _x0 + 1;
-  const int _y1 = _y0 + 1;
-
-  const float x_diff = _x - _x0;
-  const float y_diff = _y - _y0;
-
-  const float l00 = grain_lut[_y0 * GRAIN_LUT_SIZE + _x0];
-  const float l01 = grain_lut[_y0 * GRAIN_LUT_SIZE + _x1];
-  const float l10 = grain_lut[_y1 * GRAIN_LUT_SIZE + _x0];
-  const float l11 = grain_lut[_y1 * GRAIN_LUT_SIZE + _x1];
-
-  const float xy0 = (1.0f - y_diff) * l00 + l10 * y_diff;
-  const float xy1 = (1.0f - y_diff) * l01 + l11 * y_diff;
-  return xy0 * (1.0f - x_diff) + xy1 * x_diff;
-}
-
 
 const char *name()
 {
