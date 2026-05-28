@@ -1894,8 +1894,6 @@ void process(dt_iop_module_t *self,
   const int height = roi_out->height;
   const size_t npixels = (size_t)width * height;
   const int autoscale = d->params.curve_autoscale;
-  const _curve_table_ptr restrict table = d->table;
-  const _coeffs_table_ptr restrict unbounded_coeffs = d->unbounded_coeffs;
 
   darkroom_rgbcurve_process(
       in, out, npixels,
