@@ -21,7 +21,7 @@
 # ─── Stage 1: Build ──────────────────────────────────────────────────────────
 FROM ubuntu:24.04 AS builder
 
-ARG DARKROOM_REPO=https://www.housefz.com/git/ilfrick/darkroom.git
+ARG DARKROOM_REPO=https://github.com/ilfrick/darkroom.git
 ARG DARKROOM_BRANCH=master
 ARG CMAKE_BUILD_TYPE=Release
 ARG USE_AI=OFF
