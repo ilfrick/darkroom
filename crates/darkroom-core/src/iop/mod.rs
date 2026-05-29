@@ -40,6 +40,7 @@ pub mod velvia;
 pub mod vibrance;
 pub mod vignette;
 pub mod overlay;
+pub mod temperature;
 pub mod zonesystem;
 
 use crate::{params::IopParams, roi::RoiIn, Result};

@@ -38,6 +38,7 @@
 #include "gui/gtk.h"
 #include "gui/color_picker_proxy.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 
 // for Kelvin temperature and bogus WB
 #include "common/colorspaces.h"
@@ -624,15 +625,7 @@ void process(dt_iop_module_t *self,
   else
   { // non-mosaiced
     const size_t npixels = (size_t)height * width;
-
-    DT_OMP_FOR()
-    for(size_t k = 0; k < 4*npixels; k += 4)
-    {
-      for_each_channel(c,aligned(in,out))
-      {
-        out[k+c] = in[k+c] * d_coeffs[c];
-      }
-    }
+    darkroom_temperature_process_rgb(in, out, npixels, d_coeffs);
   }
 
   _publish_chroma(piece);

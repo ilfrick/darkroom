@@ -727,6 +727,15 @@ void darkroom_agx_process(const float *in_buf,
                           int base_working_same_profile,
                           const void *params);
 
+/* Non-mosaiced white-balance multiply.
+ * Replaces the DT_OMP_FOR else-branch in temperature.c::process().
+ * coeffs[4] = d->coeffs — one scalar multiplier per RGBA channel.
+ */
+void darkroom_temperature_process_rgb(const float *in_buf,
+                                      float *out_buf,
+                                      size_t npixels,
+                                      const float *coeffs);
+
 /*
  * Filmic IOP pixel loop (Lab-space filmic tone-mapping).
  *
