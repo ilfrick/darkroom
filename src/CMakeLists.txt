@@ -1093,6 +1093,12 @@ if(CARGO)
   add_library(darkroom_core SHARED IMPORTED GLOBAL)
   set_target_properties(darkroom_core PROPERTIES
       IMPORTED_LOCATION "${_darkroom_core_lib}"
+      # Rust cdylibs have no embedded SONAME, so without this CMake records
+      # the absolute cargo build-tree path in libdarktable.so's NEEDED entry
+      # and the loader fails at runtime. Force a plain SONAME so the dynamic
+      # linker resolves the dependency relative to RUNPATH ($ORIGIN of
+      # libdarktable.so), where libdarkroom_core.so is installed alongside it.
+      IMPORTED_SONAME "libdarkroom_core.so"
   )
   add_dependencies(darkroom_core darkroom_core_rust)
 
