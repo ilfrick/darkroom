@@ -863,6 +863,30 @@ void darkroom_filmic_process(const float *in_buf,
                              const float *table,
                              const float *grad_2);
 
+/*
+ * Basecurve IOP — legacy (no preserve-colors) per-channel tone curve via integer-truncation LUT.
+ *
+ * Matches apply_legacy_curve() in src/iop/basecurve.c.
+ * table:            65536 floats — single shared LUT for all RGB channels.
+ * unbounded_coeffs: 3 floats — [c0, c1, c2] for eval_exp extrapolation (f >= 1.0).
+ * mul:              pre-scalar applied to every channel value before lookup.
+ */
+void darkroom_basecurve_apply_legacy_curve(const float *in_buf,
+                                           float *out_buf,
+                                           size_t npixels,
+                                           float mul,
+                                           const float *table,
+                                           const float *unbounded_coeffs);
+
+/*
+ * Basecurve IOP — exposure-fusion feature map written into alpha channel in-place.
+ *
+ * Matches compute_features() in src/iop/basecurve.c.
+ * Writes sat * well_exposedness into buf[k*4+3] for every pixel k.
+ */
+void darkroom_basecurve_compute_features(float *buf,
+                                         size_t npixels);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

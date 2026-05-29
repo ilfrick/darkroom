@@ -35,6 +35,7 @@
 #include "gui/presets.h"
 #include "gui/accelerators.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 
 #include <regex.h>
 #include <assert.h>
@@ -984,33 +985,6 @@ void tiling_callback(dt_iop_module_t *self,
   }
 }
 
-// See comments of opencl version in data/kernels/basecurve.cl for description of the meaning of "legacy"
-static inline void apply_legacy_curve(
-    const float *const in,
-    float *const out,
-    const int width,
-    const int height,
-    const float mul,
-    const float *const table,
-    const float *const unbounded_coeffs)
-{
-  const size_t npixels = (size_t)width * height;
-  DT_OMP_FOR()
-  for(size_t k = 0; k < 4*npixels; k += 4)
-  {
-    for(int i = 0; i < 3; i++)
-    {
-      const float f = in[k+i] * mul;
-      // use base curve for values < 1, else use extrapolation.
-      if(f < 1.0f)
-        out[k+i] = fmaxf(table[CLAMP((int)(f * 0x10000ul), 0, 0xffff)], 0.f);
-      else
-        out[k+i] = fmaxf(dt_iop_eval_exp(unbounded_coeffs, f), 0.f);
-    }
-    out[k+3] = in[k+3];
-  }
-}
-
 // See description of the equivalent OpenCL function in data/kernels/basecurve.cl
 static inline void apply_curve(
     const float *const in,
@@ -1043,33 +1017,6 @@ static inline void apply_curve(
       out[k+c] = fmaxf(ratio * in[k+c], 0.f);
     }
     out[k+3] = in[k+3];
-  }
-}
-
-static inline void compute_features(
-    float *const col,
-    const int wd,
-    const int ht)
-{
-  // features are product of
-  // 1) well exposedness
-  // 2) saturation
-  // 3) local contrast (handled in laplacian form later)
-  const size_t npixels = (size_t)wd * ht;
-  DT_OMP_FOR()
-  for(size_t x = 0; x < 4*npixels; x += 4)
-  {
-    const float max = MAX(col[x], MAX(col[x+1], col[x+2]));
-    const float min = MIN(col[x], MIN(col[x+1], col[x+2]));
-    const float sat = .1f + .1f*(max-min)/MAX(1e-4f, max);
-
-    const float c = 0.54f;
-    float v = fabsf(col[x]-c);
-    v = MAX(fabsf(col[x+1]-c), v);
-    v = MAX(fabsf(col[x+2]-c), v);
-    const float var = 0.5;
-    const float exp = .2f + dt_fast_expf(-v*v/(var*var));
-    col[x+3] = sat * exp;
   }
 }
 
@@ -1229,7 +1176,7 @@ void process_fusion(dt_iop_module_t *self,
     // for every exposure fusion image:
     // push by some ev, apply base curve:
     if(d->preserve_colors == DT_RGB_NORM_NONE)
-      apply_legacy_curve(in, col[0], wd, ht,
+      darkroom_basecurve_apply_legacy_curve(in, col[0], (size_t)wd * ht,
                          exposure_increment(d->exposure_stops, e, d->exposure_fusion, d->exposure_bias),
                          d->table, d->unbounded_coeffs);
     else
@@ -1237,7 +1184,7 @@ void process_fusion(dt_iop_module_t *self,
                   d->table, d->unbounded_coeffs, work_profile);
 
     // compute features
-    compute_features(col[0], wd, ht);
+    darkroom_basecurve_compute_features(col[0], (size_t)wd * ht);
 
     // create gaussian pyramid of colour buffer
     w = wd;
@@ -1373,7 +1320,7 @@ void process_lut(dt_iop_module_t *self,
   // Compared to previous implementation, we've at least moved this conditional outside of the image processing loops
   // so that it is evaluated only once.  See FIXME comments in apply_curve for more potential performance improvements
   if(d->preserve_colors == DT_RGB_NORM_NONE)
-    apply_legacy_curve(in, out, wd, ht, 1.0, d->table, d->unbounded_coeffs);
+    darkroom_basecurve_apply_legacy_curve(in, out, (size_t)wd * ht, 1.0f, d->table, d->unbounded_coeffs);
   else
     apply_curve(in, out, wd, ht, d->preserve_colors, 1.0, d->table, d->unbounded_coeffs, work_profile);
 }
