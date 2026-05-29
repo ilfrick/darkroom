@@ -42,6 +42,8 @@ pub mod velvia;
 pub mod vibrance;
 pub mod vignette;
 pub mod overlay;
+pub mod atrous;
+pub mod colorin;
 pub mod temperature;
 pub mod watermark;
 pub mod zonesystem;

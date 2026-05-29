@@ -762,6 +762,23 @@ void darkroom_lut3d_pyramid(const float *in_buf, float *out_buf,
                             size_t npixels,
                             const float *clut, uint16_t level);
 
+/* Wavelet residue add: out[k] += add[k] for k=0..n-1.
+ * Replaces the DT_OMP_FOR_SIMD residue-add loop at the end of atrous.c process().
+ */
+void darkroom_add_buffers(float *out_buf, const float *add_buf, size_t n);
+
+/* Camera-RGB → Lab via 4×4 colour matrix (cam→XYZ) + D50 XYZ→Lab.
+ * Replaces the per-pixel loop in _cmatrix_fastpath_simple() in colorin.c.
+ * corr:    4 white-balance correction coefficients.
+ * cmatrix: 16 floats, dt_colormatrix_t row-major (float[4][4]).
+ * Output alpha is always 0.
+ */
+void darkroom_colorin_cmatrix_fastpath_simple(const float *in_buf,
+                                              float *out_buf,
+                                              size_t npixels,
+                                              const float *corr,
+                                              const float *cmatrix);
+
 /* colorout Lab→XYZ→RGB using pre-transposed 3×4 colormatrix.
  * Replaces DT_OMP_FOR in _transform_cmatrix_linear() in colorout.c.
  * cmatrix: 12 floats, row-major (3 rows × 4), output of transpose_3xSSE().

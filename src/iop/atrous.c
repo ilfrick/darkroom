@@ -32,6 +32,7 @@
 #include "gui/gtk.h"
 #include "gui/presets.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 
 #include <math.h>
 #include <memory.h>
@@ -338,9 +339,7 @@ static void process_wavelets(dt_iop_module_t *self,
   }
 
   // add in the final residue
-  DT_OMP_FOR_SIMD(aligned(buf1, out : 64) num_threads(MIN(dt_get_num_threads(),16)))
-  for(size_t k = 0; k < (size_t)4 * width * height; k++)
-    out[k] += buf1[k];
+  darkroom_add_buffers(out, buf1, (size_t)4 * width * height);
 
   dt_free_align(tmp);
   dt_free_align(tmp2);
