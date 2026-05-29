@@ -954,6 +954,32 @@ void darkroom_overexposed_anyrgb(const float *in_buf,
                                  const float *lower_color);
 
 /*
+ * Overexposed IOP — work-profile-luminance clipping preview.
+ * Same upper/lower decision tree as ANYRGB, but the test is run on the
+ * matrix-derived Y value (with optional TRC linearisation when the
+ * working profile is non-linear). Mirrors dt_ioppr_get_rgb_matrix_luminance
+ * exactly. `matrix_in` is the full 4x4 colour-matrix-to-XYZ array (16
+ * floats, only row 1 is read). `lut0/1/2` are the three per-channel TRC
+ * LUTs (each `lutsize` floats). `unbounded_coeffs` is 3*3 = 9 floats.
+ * Matches the DT_CLIPPING_PREVIEW_LUMINANCE branch in src/iop/overexposed.c.
+ */
+void darkroom_overexposed_luminance(const float *in_buf,
+                                    float *out_buf,
+                                    const float *img_tmp,
+                                    size_t npixels,
+                                    float upper,
+                                    float lower,
+                                    const float *upper_color,
+                                    const float *lower_color,
+                                    const float *matrix_in,
+                                    const float *lut0,
+                                    const float *lut1,
+                                    const float *lut2,
+                                    size_t lutsize,
+                                    const float *unbounded_coeffs,
+                                    int nonlinear_lut);
+
+/*
  * Hotpixels IOP — Bayer-sensor hot-pixel correction.
  * For each interior pixel above threshold, examines the four same-colour
  * Bayer neighbours (offsets ±2, ±2*width). If at least `min_neighbours`

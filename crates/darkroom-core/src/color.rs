@@ -192,3 +192,129 @@ pub fn rgb_norm(r: f32, g: f32, b: f32, mode: i32) -> f32 {
 pub fn eval_exp(coeff: &[f32], x: f32) -> f32 {
     coeff[1] * (x * coeff[0]).powf(coeff[2])
 }
+
+// ── ICC profile primitives (mirrors src/common/iop_profile.h inline helpers) ─
+
+/// Linearly interpolate a per-channel LUT.
+///
+/// Matches `extrapolate_lut()` in src/common/iop_profile.h: clamps the input
+/// position to [0, lutsize-1], picks the floor index (capped at lutsize-2 so
+/// `t+1` is in bounds), and interpolates between the two nearest LUT entries.
+#[inline(always)]
+pub fn extrapolate_lut(lut: &[f32], v: f32, lutsize: usize) -> f32 {
+    let ft = (v * (lutsize - 1) as f32).clamp(0.0, (lutsize - 1) as f32);
+    let t = if (ft as usize) < lutsize - 2 { ft as usize } else { lutsize - 2 };
+    let f = ft - t as f32;
+    lut[t] * (1.0 - f) + lut[t + 1] * f
+}
+
+/// Apply the per-channel tone response curve to the three RGB components.
+///
+/// Matches `dt_ioppr_apply_trc()`. For each channel:
+/// * if `lut[c][0] < 0` the LUT is disabled (no-op);
+/// * else if `rgb_in[c] < 1.0`, look it up via `extrapolate_lut`;
+/// * else extrapolate with `eval_exp(unbounded_coeffs[c], rgb_in[c])`.
+///
+/// `luts[c]` is a slice of length `lutsize`; `unbounded_coeffs[c]` is a 3-float
+/// slice as the C side stores per-channel `eval_exp` parameters.
+#[inline(always)]
+pub fn apply_trc(
+    rgb_in: [f32; 4],
+    luts: [&[f32]; 3],
+    unbounded_coeffs: [&[f32]; 3],
+    lutsize: usize,
+) -> [f32; 4] {
+    let mut out = rgb_in;
+    for c in 0..3 {
+        out[c] = if luts[c][0] >= 0.0 {
+            if rgb_in[c] < 1.0 {
+                extrapolate_lut(luts[c], rgb_in[c], lutsize)
+            } else {
+                eval_exp(unbounded_coeffs[c], rgb_in[c])
+            }
+        } else {
+            rgb_in[c]
+        };
+    }
+    out
+}
+
+/// Compute the relative luminance Y of an RGB pixel under a working-space ICC
+/// profile.
+///
+/// Matches `dt_ioppr_get_rgb_matrix_luminance()`:
+/// * if `nonlinear_lut` is true, first linearise the pixel via `apply_trc`;
+/// * then return the row-1 dot product with the input matrix (the Y row of
+///   the 3x4 colour matrix laid out as a 4x4 padded array).
+///
+/// `matrix_in` is the 4x4 colour-matrix-to-XYZ array (we only read row 1).
+#[inline(always)]
+pub fn get_rgb_matrix_luminance(
+    rgb: [f32; 4],
+    matrix_in: &[[f32; 4]; 4],
+    luts: [&[f32]; 3],
+    unbounded_coeffs: [&[f32]; 3],
+    lutsize: usize,
+    nonlinear_lut: bool,
+) -> f32 {
+    let r = if nonlinear_lut {
+        apply_trc(rgb, luts, unbounded_coeffs, lutsize)
+    } else {
+        rgb
+    };
+    matrix_in[1][0] * r[0] + matrix_in[1][1] * r[1] + matrix_in[1][2] * r[2]
+}
+
+#[cfg(test)]
+mod profile_tests {
+    use super::*;
+
+    #[test]
+    fn extrapolate_lut_identity() {
+        // LUT[i] = i/(N-1) maps v → v
+        let n = 1024;
+        let lut: Vec<f32> = (0..n).map(|i| i as f32 / (n - 1) as f32).collect();
+        for &v in &[0.0_f32, 0.25, 0.5, 0.75, 1.0] {
+            let r = extrapolate_lut(&lut, v, n);
+            assert!((r - v).abs() < 1e-4, "v={v} got={r}");
+        }
+    }
+
+    #[test]
+    fn extrapolate_lut_clamps_above_one() {
+        let lut: Vec<f32> = vec![0.5; 16];
+        assert_eq!(extrapolate_lut(&lut, 5.0, 16), 0.5); // saturates at last entry
+    }
+
+    #[test]
+    fn apply_trc_disabled_lut_is_passthrough() {
+        let lut = vec![-1.0_f32; 4]; // negative sentinel → no-op
+        let coeffs = [1.0_f32, 1.0, 1.0];
+        let rgb = [0.3, 0.5, 0.7, 1.0];
+        let out = apply_trc(rgb,
+            [&lut[..], &lut[..], &lut[..]],
+            [&coeffs[..], &coeffs[..], &coeffs[..]],
+            lut.len());
+        assert_eq!(out, rgb);
+    }
+
+    #[test]
+    fn luminance_linear_path_takes_y_row() {
+        // matrix[1] = [0.25, 0.5, 0.25, 0]; rgb = [1,1,1] → 1.0
+        let m: [[f32; 4]; 4] = [
+            [0.0; 4],
+            [0.25, 0.5, 0.25, 0.0],
+            [0.0; 4],
+            [0.0; 4],
+        ];
+        let lut = vec![0.0_f32; 4];
+        let coeffs = [0.0_f32; 3];
+        let y = get_rgb_matrix_luminance(
+            [1.0, 1.0, 1.0, 0.0], &m,
+            [&lut[..], &lut[..], &lut[..]],
+            [&coeffs[..], &coeffs[..], &coeffs[..]],
+            lut.len(), false,
+        );
+        assert!((y - 1.0).abs() < 1e-6);
+    }
+}

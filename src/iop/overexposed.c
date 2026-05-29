@@ -213,29 +213,17 @@ void process(dt_iop_module_t *self, dt_dev_pixelpipe_iop_t *piece, const void *c
 
   else if(dev->overexposed.mode == DT_CLIPPING_PREVIEW_LUMINANCE && work_profile)
   {
-    // Luminance channel is out of bounds
-    DT_OMP_FOR()
-    for(size_t k = 0; k < (size_t)ch * roi_out->width * roi_out->height; k += ch)
-    {
-      const float luminance = dt_ioppr_get_rgb_matrix_luminance(img_tmp + k,
-                                                                work_profile->matrix_in, work_profile->lut_in,
-                                                                work_profile->unbounded_coeffs_in,
-                                                                work_profile->lutsize, work_profile->nonlinearlut);
-
-      if(luminance >= upper)
-      {
-        copy_pixel(out + k, upper_color);
-      }
-
-      else if(luminance <= lower)
-      {
-        copy_pixel(out + k, lower_color);
-      }
-      else
-      {
-        copy_pixel(out + k, in + k);
-      }
-    }
+    // Luminance channel is out of bounds — fully delegated to Rust.
+    darkroom_overexposed_luminance(in, out, img_tmp,
+                                   (size_t)roi_out->width * roi_out->height,
+                                   upper, lower, upper_color, lower_color,
+                                   (const float *)work_profile->matrix_in,
+                                   work_profile->lut_in[0],
+                                   work_profile->lut_in[1],
+                                   work_profile->lut_in[2],
+                                   (size_t)work_profile->lutsize,
+                                   (const float *)work_profile->unbounded_coeffs_in,
+                                   work_profile->nonlinearlut ? 1 : 0);
   }
 
   else if(dev->overexposed.mode == DT_CLIPPING_PREVIEW_SATURATION && work_profile)
