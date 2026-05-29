@@ -160,55 +160,17 @@ void process(dt_iop_module_t *self, dt_dev_pixelpipe_iop_t *piece, const void *c
 
   else if(dev->overexposed.mode == DT_CLIPPING_PREVIEW_GAMUT && work_profile)
   {
-    // Gamut is out of bounds
-    DT_OMP_FOR()
-    for(size_t k = 0; k < (size_t)ch * roi_out->width * roi_out->height; k += ch)
-    {
-      const float luminance = dt_ioppr_get_rgb_matrix_luminance(img_tmp + k,
-                                                                work_profile->matrix_in, work_profile->lut_in,
-                                                                work_profile->unbounded_coeffs_in,
-                                                                work_profile->lutsize, work_profile->nonlinearlut);
-
-      // luminance is out of bounds
-      if(luminance >= upper)
-      {
-        copy_pixel(out + k, upper_color);
-      }
-      else if(luminance <= lower)
-      {
-        copy_pixel(out + k, lower_color);
-      }
-      // luminance is ok, so check for saturation
-      else
-      {
-        dt_aligned_pixel_t saturation = { 0.f };
-
-        for_each_channel(c,aligned(saturation, img_tmp : 64))
-        {
-          saturation[c] = (img_tmp[k + c] - luminance);
-          saturation[c] = sqrtf(saturation[c] * saturation[c] / (luminance * luminance + img_tmp[k + c] * img_tmp[k + c]));
-        }
-
-        // we got over-saturation, relatively to luminance or absolutely over RGB
-        if(saturation[0] > upper || saturation[1] > upper || saturation[2] > upper ||
-          img_tmp[k + 0] >= upper || img_tmp[k + 1] >= upper || img_tmp[k + 2] >= upper)
-        {
-          copy_pixel(out + k, upper_color);
-        }
-
-        // saturation is fine but we got out-of-bounds RGB
-        else if(img_tmp[k + 0] <= lower && img_tmp[k + 1] <= lower && img_tmp[k + 2] <= lower)
-        {
-          copy_pixel(out + k, lower_color);
-        }
-
-        // evererything is fine
-        else
-        {
-          copy_pixel(out + k, in + k);
-        }
-      }
-    }
+    // Gamut is out of bounds — fully delegated to Rust.
+    darkroom_overexposed_gamut(in, out, img_tmp,
+                               (size_t)roi_out->width * roi_out->height,
+                               upper, lower, upper_color, lower_color,
+                               (const float *)work_profile->matrix_in,
+                               work_profile->lut_in[0],
+                               work_profile->lut_in[1],
+                               work_profile->lut_in[2],
+                               (size_t)work_profile->lutsize,
+                               (const float *)work_profile->unbounded_coeffs_in,
+                               work_profile->nonlinearlut ? 1 : 0);
   }
 
   else if(dev->overexposed.mode == DT_CLIPPING_PREVIEW_LUMINANCE && work_profile)
@@ -228,45 +190,17 @@ void process(dt_iop_module_t *self, dt_dev_pixelpipe_iop_t *piece, const void *c
 
   else if(dev->overexposed.mode == DT_CLIPPING_PREVIEW_SATURATION && work_profile)
   {
-    // Show saturation out of bounds where luminance is valid
-    DT_OMP_FOR()
-    for(size_t k = 0; k < (size_t)ch * roi_out->width * roi_out->height; k += ch)
-    {
-      const float luminance = dt_ioppr_get_rgb_matrix_luminance(img_tmp + k,
-                                                                work_profile->matrix_in, work_profile->lut_in,
-                                                                work_profile->unbounded_coeffs_in,
-                                                                work_profile->lutsize, work_profile->nonlinearlut);
-      if(luminance < upper && luminance > lower)
-      {
-        dt_aligned_pixel_t saturation = { 0.f };
-
-        for_each_channel(c,aligned(saturation, img_tmp : 64))
-        {
-          saturation[c] = (img_tmp[k + c] - luminance);
-          saturation[c] = sqrtf(saturation[c] * saturation[c] / (luminance * luminance + img_tmp[k + c] * img_tmp[k + c]));
-        }
-
-        // we got over-saturation, relatively to luminance or absolutely over RGB
-        if(saturation[0] > upper || saturation[1] > upper || saturation[2] > upper ||
-           img_tmp[k + 0] >= upper || img_tmp[k + 1] >= upper || img_tmp[k + 2] >= upper)
-        {
-          copy_pixel(out + k, upper_color);
-        }
-        else if(img_tmp[k + 0] <= lower && img_tmp[k + 1] <= lower && img_tmp[k + 2] <= lower)
-        {
-          copy_pixel(out + k, lower_color);
-        }
-        else
-        {
-          copy_pixel(out + k, in + k);
-        }
-      }
-
-      else
-      {
-        copy_pixel(out + k, in + k);
-      }
-    }
+    // Saturation-only branch — fully delegated to Rust.
+    darkroom_overexposed_saturation(in, out, img_tmp,
+                                    (size_t)roi_out->width * roi_out->height,
+                                    upper, lower, upper_color, lower_color,
+                                    (const float *)work_profile->matrix_in,
+                                    work_profile->lut_in[0],
+                                    work_profile->lut_in[1],
+                                    work_profile->lut_in[2],
+                                    (size_t)work_profile->lutsize,
+                                    (const float *)work_profile->unbounded_coeffs_in,
+                                    work_profile->nonlinearlut ? 1 : 0);
   }
 
   dt_mm_restore_flush_zero(oldMode);

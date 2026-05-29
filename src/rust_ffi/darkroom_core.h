@@ -980,6 +980,50 @@ void darkroom_overexposed_luminance(const float *in_buf,
                                     int nonlinear_lut);
 
 /*
+ * Overexposed IOP — gamut clipping preview (luminance + per-channel
+ * saturation test). Same signature as the LUMINANCE variant.
+ * Matches the DT_CLIPPING_PREVIEW_GAMUT branch in src/iop/overexposed.c.
+ */
+void darkroom_overexposed_gamut(const float *in_buf,
+                                float *out_buf,
+                                const float *img_tmp,
+                                size_t npixels,
+                                float upper,
+                                float lower,
+                                const float *upper_color,
+                                const float *lower_color,
+                                const float *matrix_in,
+                                const float *lut0,
+                                const float *lut1,
+                                const float *lut2,
+                                size_t lutsize,
+                                const float *unbounded_coeffs,
+                                int nonlinear_lut);
+
+/*
+ * Overexposed IOP — saturation-only preview. Same signature as the
+ * LUMINANCE variant. Tests the saturation+RGB clipping only when
+ * luminance is inside (lower, upper); otherwise the input is passed
+ * through.
+ * Matches the DT_CLIPPING_PREVIEW_SATURATION branch in src/iop/overexposed.c.
+ */
+void darkroom_overexposed_saturation(const float *in_buf,
+                                     float *out_buf,
+                                     const float *img_tmp,
+                                     size_t npixels,
+                                     float upper,
+                                     float lower,
+                                     const float *upper_color,
+                                     const float *lower_color,
+                                     const float *matrix_in,
+                                     const float *lut0,
+                                     const float *lut1,
+                                     const float *lut2,
+                                     size_t lutsize,
+                                     const float *unbounded_coeffs,
+                                     int nonlinear_lut);
+
+/*
  * Hotpixels IOP — Bayer-sensor hot-pixel correction.
  * For each interior pixel above threshold, examines the four same-colour
  * Bayer neighbours (offsets ±2, ±2*width). If at least `min_neighbours`
