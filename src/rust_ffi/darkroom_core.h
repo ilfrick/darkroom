@@ -953,6 +953,25 @@ void darkroom_overexposed_anyrgb(const float *in_buf,
                                  const float *upper_color,
                                  const float *lower_color);
 
+/*
+ * Hotpixels IOP — Bayer-sensor hot-pixel correction.
+ * For each interior pixel above threshold, examines the four same-colour
+ * Bayer neighbours (offsets ±2, ±2*width). If at least `min_neighbours`
+ * of them satisfy `pixel*multiplier > neighbour`, replaces the pixel
+ * with the maximum of those neighbours. When `mark_fixed` is true,
+ * stamps the original value at column offsets ±2..±10 (step 2) for the
+ * UI debug overlay. Returns the count of pixels replaced.
+ * Matches _process_bayer() in src/iop/hotpixels.c.
+ */
+int darkroom_hotpixels_bayer(const float *in_buf,
+                             float *out_buf,
+                             size_t width,
+                             size_t height,
+                             float threshold,
+                             float multiplier,
+                             int min_neighbours,
+                             int mark_fixed);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

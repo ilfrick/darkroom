@@ -52,6 +52,7 @@ pub mod basecurve;
 pub mod hazeremoval;
 pub mod censorize;
 pub mod overexposed;
+pub mod hotpixels;
 
 use crate::{params::IopParams, roi::RoiIn, Result};
 
