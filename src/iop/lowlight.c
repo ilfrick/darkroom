@@ -110,14 +110,6 @@ dt_iop_colorspace_type_t default_colorspace(dt_iop_module_t *self,
   return IOP_CS_LAB;
 }
 
-static float lookup(const float *lut, const float i)
-{
-  const int bin0 = MIN(0xffff, MAX(0, DT_IOP_LOWLIGHT_LUT_RES * i));
-  const int bin1 = MIN(0xffff, MAX(0, DT_IOP_LOWLIGHT_LUT_RES * i + 1));
-  const float f = DT_IOP_LOWLIGHT_LUT_RES * i - bin0;
-  return lut[bin1] * f + lut[bin0] * (1. - f);
-}
-
 void process(dt_iop_module_t *self,
              dt_dev_pixelpipe_iop_t *piece,
              const void *const restrict i,
