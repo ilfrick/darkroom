@@ -1077,6 +1077,7 @@ if(CARGO)
             "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/dither.rs"
             "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/agx.rs"
             "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/temperature.rs"
+            "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/colorout.rs"
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     COMMENT "Building Rust crate darkroom-core"
     VERBATIM

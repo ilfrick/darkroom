@@ -13,6 +13,7 @@ pub mod invert;
 pub mod monochrome;
 pub mod channelmixer;
 pub mod colorbalance;
+pub mod colorout;
 pub mod filmic;
 pub mod lowpass;
 pub mod shadhi;

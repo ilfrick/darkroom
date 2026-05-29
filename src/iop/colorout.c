@@ -31,6 +31,7 @@
 #include "gui/accelerators.h"
 #include "gui/gtk.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 
 #include <assert.h>
 #include <gdk/gdkkeysyms.h>
@@ -410,25 +411,7 @@ static void _transform_cmatrix_linear(const dt_iop_colorout_data_t *const d,
 {
   dt_colormatrix_t cmatrix;
   transpose_3xSSE(d->cmatrix, cmatrix);
-  dt_aligned_pixel_t cmatrix_0, cmatrix_1, cmatrix_2;
-  copy_pixel(cmatrix_0,cmatrix[0]);
-  copy_pixel(cmatrix_1,cmatrix[1]);
-  copy_pixel(cmatrix_2,cmatrix[2]);
-  DT_OMP_FOR()
-  for(size_t k = 0; k < npixels; k++)
-  {
-    // oddly, calling dt_Lab_to_linearRGB instead of doing the
-    // matrix multiplication here is about 10% slower even though it
-    // generates virtually the same instructions and fewer memory
-    // loads.
-    dt_aligned_pixel_t XYZ;
-    dt_Lab_to_XYZ(in + 4*k, XYZ);
-    dt_aligned_pixel_t rgb;
-    for_each_channel(r)
-      rgb[r] = cmatrix_0[r] * XYZ[0] + cmatrix_1[r] * XYZ[1] + cmatrix_2[r] * XYZ[2];
-    copy_pixel_nontemporal(out + 4*k, rgb);
-  }
-  dt_omploop_sfence();
+  darkroom_colorout_cmatrix_linear(in, out, npixels, (const float *)cmatrix);
 }
 
 static void _transform_cmatrix_tonecurve(const dt_iop_colorout_data_t *const d,

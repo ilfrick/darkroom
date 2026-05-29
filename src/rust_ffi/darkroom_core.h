@@ -736,6 +736,16 @@ void darkroom_temperature_process_rgb(const float *in_buf,
                                       size_t npixels,
                                       const float *coeffs);
 
+/* colorout Lab→XYZ→RGB using pre-transposed 3×4 colormatrix.
+ * Replaces DT_OMP_FOR in _transform_cmatrix_linear() in colorout.c.
+ * cmatrix: 12 floats, row-major (3 rows × 4), output of transpose_3xSSE().
+ * Output alpha is always 0.
+ */
+void darkroom_colorout_cmatrix_linear(const float *in_buf,
+                                      float *out_buf,
+                                      size_t npixels,
+                                      const float *cmatrix);
+
 /*
  * Filmic IOP pixel loop (Lab-space filmic tone-mapping).
  *
