@@ -935,6 +935,24 @@ void darkroom_censorize_pixelate(const float *in_buf,
                                  size_t height,
                                  size_t pixel_radius);
 
+/*
+ * Overexposed IOP — per-channel "any RGB" clipping preview.
+ * For each pixel k:
+ *   if any of R,G,B in img_tmp >= upper      → out[k] = upper_color
+ *   else if R,G,B all <= lower               → out[k] = lower_color
+ *   else                                     → out[k] = in[k]
+ * upper_color and lower_color are 4-float RGBA arrays.
+ * Matches the DT_CLIPPING_PREVIEW_ANYRGB branch in src/iop/overexposed.c.
+ */
+void darkroom_overexposed_anyrgb(const float *in_buf,
+                                 float *out_buf,
+                                 const float *img_tmp,
+                                 size_t npixels,
+                                 float upper,
+                                 float lower,
+                                 const float *upper_color,
+                                 const float *lower_color);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

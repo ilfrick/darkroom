@@ -29,6 +29,7 @@
 #include "gui/accelerators.h"
 #include "develop/tiling.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 
 DT_MODULE(3)
 
@@ -152,22 +153,9 @@ void process(dt_iop_module_t *self, dt_dev_pixelpipe_iop_t *piece, const void *c
   if(dev->overexposed.mode == DT_CLIPPING_PREVIEW_ANYRGB)
   {
     // Any of the RGB channels is out of bounds
-    DT_OMP_FOR()
-    for(size_t k = 0; k < (size_t)ch * roi_out->width * roi_out->height; k += ch)
-    {
-      if(img_tmp[k + 0] >= upper || img_tmp[k + 1] >= upper || img_tmp[k + 2] >= upper)
-      {
-        copy_pixel(out + k, upper_color);
-      }
-      else if(img_tmp[k + 0] <= lower && img_tmp[k + 1] <= lower && img_tmp[k + 2] <= lower)
-      {
-        copy_pixel(out + k, lower_color);
-      }
-      else
-      {
-        copy_pixel(out + k, in + k);
-      }
-    }
+    darkroom_overexposed_anyrgb(in, out, img_tmp,
+                                (size_t)roi_out->width * roi_out->height,
+                                upper, lower, upper_color, lower_color);
   }
 
   else if(dev->overexposed.mode == DT_CLIPPING_PREVIEW_GAMUT && work_profile)
