@@ -812,6 +812,21 @@ void darkroom_channelmixerrgb_loop_switch(const float *in_buf,
                                           int kind,
                                           int version);
 
+/*
+ * colorout tone-curve application — in-place per-channel LUT + exp extrapolation.
+ *
+ * Replaces both DT_OMP_FOR loops in process_fastpath_apply_tonecurves() in colorout.c.
+ * lut:              3 × LUT_SAMPLES (65536) floats, row-major (channel c at c*65536).
+ * unbounded_coeffs: 3 × 3 floats, row-major (channel c at c*3).
+ *   eval_exp(c, v) = coeff[1] * pow(v * coeff[0], coeff[2])  — matches dt_iop_eval_exp.
+ * lut_active:       3 ints; non-zero → apply LUT+exp for that channel.
+ */
+void darkroom_colorout_apply_tonecurves(float *buf,
+                                        size_t npixels,
+                                        const float *lut,
+                                        const float *unbounded_coeffs,
+                                        const int *lut_active);
+
 /* colorout Lab→XYZ→RGB using pre-transposed 3×4 colormatrix.
  * Replaces DT_OMP_FOR in _transform_cmatrix_linear() in colorout.c.
  * cmatrix: 12 floats, row-major (3 rows × 4), output of transpose_3xSSE().

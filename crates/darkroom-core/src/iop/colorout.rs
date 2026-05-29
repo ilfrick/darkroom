@@ -56,6 +56,61 @@ pub unsafe extern "C" fn darkroom_colorout_cmatrix_linear(
     }
 }
 
+const LUT_SAMPLES: usize = 0x10000;
+
+/// Linear interpolation into a 65536-entry float LUT.
+/// Matches _lerp_lut() in colorout.c: clips v to [0, +∞), then interpolates.
+/// Caller guarantees v < 1.0 so the index stays within [0, LUT_SAMPLES-2].
+#[inline(always)]
+fn lerp_lut(lut: &[f32], v: f32) -> f32 {
+    let z = v.max(0.0);
+    let ft = z * (LUT_SAMPLES - 1) as f32;
+    let t = (ft as usize).min(LUT_SAMPLES - 2);
+    let f = ft - t as f32;
+    lut[t] * (1.0 - f) + lut[t + 1] * f
+}
+
+/// Unbounded extrapolation: coeff[1] * pow(v * coeff[0], coeff[2]).
+/// Matches dt_iop_eval_exp() in imageop_math.h.
+#[inline(always)]
+fn eval_exp(coeff: &[f32], v: f32) -> f32 {
+    coeff[1] * (v * coeff[0]).powf(coeff[2])
+}
+
+/// Apply per-channel tone curves (LUT + unbounded exp) in-place.
+///
+/// Replaces both DT_OMP_FOR loops in process_fastpath_apply_tonecurves() in colorout.c.
+/// lut:              3 × 65536 floats, row-major (channel c at offset c*65536).
+/// unbounded_coeffs: 3 × 3 floats, row-major (channel c at offset c*3).
+/// lut_active:       3 ints — non-zero means the LUT for that channel is active.
+#[no_mangle]
+pub unsafe extern "C" fn darkroom_colorout_apply_tonecurves(
+    buf: *mut f32,
+    npixels: usize,
+    lut: *const f32,
+    unbounded_coeffs: *const f32,
+    lut_active: *const i32,
+) {
+    let buf = std::slice::from_raw_parts_mut(buf, npixels * 4);
+    let lut = std::slice::from_raw_parts(lut, 3 * LUT_SAMPLES);
+    let coeffs = std::slice::from_raw_parts(unbounded_coeffs, 9);
+    let active = std::slice::from_raw_parts(lut_active, 3);
+
+    for k in 0..npixels {
+        let base = k * 4;
+        for c in 0..3 {
+            if active[c] != 0 {
+                let v = buf[base + c];
+                buf[base + c] = if v < 1.0 {
+                    lerp_lut(&lut[c * LUT_SAMPLES..(c + 1) * LUT_SAMPLES], v)
+                } else {
+                    eval_exp(&coeffs[c * 3..(c + 1) * 3], v)
+                };
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -83,6 +138,68 @@ mod tests {
         assert!((xyz[0] - 0.9642).abs() < 1e-4, "X={}", xyz[0]);
         assert!((xyz[1] - 1.0).abs() < 1e-4,    "Y={}", xyz[1]);
         assert!((xyz[2] - 0.8249).abs() < 1e-4,  "Z={}", xyz[2]);
+    }
+
+    #[test]
+    fn lerp_lut_identity_lut() {
+        // A LUT where lut[k] = k/(N-1) is the identity mapping.
+        let n = LUT_SAMPLES;
+        let lut: Vec<f32> = (0..n).map(|k| k as f32 / (n - 1) as f32).collect();
+        let v = 0.5f32;
+        let out = lerp_lut(&lut, v);
+        assert!((out - v).abs() < 1e-4, "out={out}");
+    }
+
+    #[test]
+    fn lerp_lut_clips_negative() {
+        let lut: Vec<f32> = vec![0.0f32; LUT_SAMPLES];
+        // negative input clips to 0 → lut[0] = 0
+        assert_eq!(lerp_lut(&lut, -0.5), 0.0);
+    }
+
+    #[test]
+    fn eval_exp_matches_formula() {
+        let coeff = [2.0f32, 3.0, 0.5];
+        let v = 0.25f32;
+        let expected = 3.0 * (0.25 * 2.0f32).powf(0.5);
+        assert!((eval_exp(&coeff, v) - expected).abs() < 1e-5);
+    }
+
+    #[test]
+    fn apply_tonecurves_inactive_channel_unchanged() {
+        let lut = vec![0.0f32; 3 * LUT_SAMPLES]; // all-zero LUT
+        let coeffs = [1.0f32, 1.0, 1.0,  1.0, 1.0, 1.0,  1.0, 1.0, 1.0];
+        let active = [0i32, 0, 0]; // all inactive
+        let mut buf = vec![0.3f32, 0.6, 0.9, 1.0];
+        unsafe {
+            darkroom_colorout_apply_tonecurves(
+                buf.as_mut_ptr(), 1,
+                lut.as_ptr(), coeffs.as_ptr(), active.as_ptr(),
+            );
+        }
+        assert_eq!(buf, vec![0.3, 0.6, 0.9, 1.0]); // unchanged
+    }
+
+    #[test]
+    fn apply_tonecurves_identity_lut_passthrough() {
+        // Identity LUT: maps v → v for v in [0,1)
+        let n = LUT_SAMPLES;
+        let single_lut: Vec<f32> = (0..n).map(|k| k as f32 / (n - 1) as f32).collect();
+        let lut: Vec<f32> = single_lut.iter().chain(single_lut.iter()).chain(single_lut.iter()).copied().collect();
+        let coeffs = [1.0f32; 9];
+        let active = [1i32, 1, 1];
+        let input = [0.25f32, 0.5, 0.75, 1.0];
+        let mut buf = input.to_vec();
+        unsafe {
+            darkroom_colorout_apply_tonecurves(
+                buf.as_mut_ptr(), 1,
+                lut.as_ptr(), coeffs.as_ptr(), active.as_ptr(),
+            );
+        }
+        assert!((buf[0] - 0.25).abs() < 1e-4, "R={}", buf[0]);
+        assert!((buf[1] - 0.5 ).abs() < 1e-4, "G={}", buf[1]);
+        assert!((buf[2] - 0.75).abs() < 1e-4, "B={}", buf[2]);
+        assert_eq!(buf[3], 1.0); // alpha unchanged
     }
 
     #[test]

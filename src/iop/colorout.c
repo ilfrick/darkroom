@@ -374,32 +374,15 @@ static void process_fastpath_apply_tonecurves(dt_iop_module_t *self,
     // out is already converted to RGB from Lab.
 
     // do we have any lut to apply, or is this a linear profile?
-    if((d->lut[0][0] >= 0.0f) && (d->lut[1][0] >= 0.0f) && (d->lut[2][0] >= 0.0f))
-    { // apply profile
-      DT_OMP_FOR()
-      for(size_t k = 0; k < 4 * npixels; k += 4)
-      {
-        for(int c = 0; c < 3; c++)
-        {
-          out[k + c] = (out[k + c] < 1.0f) ? _lerp_lut(d->lut[c], out[k + c])
-                                           : dt_iop_eval_exp(d->unbounded_coeffs[c], out[k + c]);
-        }
-      }
-    }
-    else if((d->lut[0][0] >= 0.0f) || (d->lut[1][0] >= 0.0f) || (d->lut[2][0] >= 0.0f))
-    { // apply profile
-      DT_OMP_FOR()
-      for(size_t k = 0; k < 4 * npixels; k += 4)
-      {
-        for(int c = 0; c < 3; c++)
-        {
-          if(d->lut[c][0] >= 0.0f)
-          {
-            out[k + c] = (out[k + c] < 1.0f) ? _lerp_lut(d->lut[c], out[k + c])
-                                             : dt_iop_eval_exp(d->unbounded_coeffs[c], out[k + c]);
-          }
-        }
-      }
+    const int lut_active[3] = {
+      d->lut[0][0] >= 0.0f ? 1 : 0,
+      d->lut[1][0] >= 0.0f ? 1 : 0,
+      d->lut[2][0] >= 0.0f ? 1 : 0
+    };
+    if(lut_active[0] || lut_active[1] || lut_active[2])
+    {
+      darkroom_colorout_apply_tonecurves(out, npixels,
+          (const float *)d->lut, (const float *)d->unbounded_coeffs, lut_active);
     }
   }
 }
