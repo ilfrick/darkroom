@@ -2,13 +2,13 @@
 name = "darkroom-ui"
 version = "0.1.0"
 edition = "2021"
-description = "GTK4 UI shell — Phase 3 target"
+description = "GTK4 + libadwaita UI shell — incrementally replaces src/views, src/libs, src/gui"
 
 [dependencies]
 darkroom-core = { workspace = true }
 darkroom-db   = { workspace = true }
 anyhow        = { workspace = true }
-# gtk4 and libadwaita are added in Phase 3 when UI porting begins:
-# gtk4       = { version = "0.9", features = ["v4_12"] }
-# libadwaita = { version = "0.7", features = ["v1_5"] }
-# cairo-rs   = "0.20"
+tracing       = { workspace = true }
+gtk4          = { version = "0.9", features = ["v4_12"] }
+adw           = { package = "libadwaita", version = "0.7", features = ["v1_5"] }
+glib          = "0.20"
