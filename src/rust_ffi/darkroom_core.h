@@ -922,6 +922,19 @@ void darkroom_hazeremoval_dehaze(const float *in_buf,
                                  const float *a0,
                                  float t_min);
 
+/*
+ * Censorize IOP — pixelate (mosaic) effect.
+ * Divides the RGBA image into 2*pixel_radius sized blocks; for each block,
+ * averages five sample points and fills every pixel of the block with that
+ * average colour. No-op if pixel_radius == 0.
+ * Matches the inner pixelate loop in src/iop/censorize.c (process()).
+ */
+void darkroom_censorize_pixelate(const float *in_buf,
+                                 float *out_buf,
+                                 size_t width,
+                                 size_t height,
+                                 size_t pixel_radius);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

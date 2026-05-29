@@ -24,6 +24,7 @@
 #include "control/control.h"
 #include "develop/develop.h"
 #include "develop/imageop.h"
+#include "rust_ffi/darkroom_core.h"
 #include "develop/imageop_math.h"
 #include "develop/imageop_gui.h"
 #include "develop/noise_generator.h"
@@ -206,44 +207,9 @@ void process(dt_iop_module_t *self,
   // pixelate
   if(pixel_radius != 0)
   {
-    const size_t pixels_x = width / (2 * pixel_radius);
-    const size_t pixels_y = height / (2 * pixel_radius);
-
-    DT_OMP_FOR(collapse(2))
-    for(size_t j = 0; j < pixels_y + 1; j++)
-      for(size_t i = 0; i < pixels_x + 1; i++)
-      {
-        // get the top left coordinate of the big pixel
-        const point_t tl = { CLAMP(2 * pixel_radius * i, 0, width - 1),
-                             CLAMP(2 * pixel_radius * j, 0, height - 1) };
-        // get the center of the big pixel
-        const point_t cc = { CLAMP(tl.x + pixel_radius, 0, width - 1),
-                             CLAMP(tl.y + pixel_radius, 0, height - 1) };
-        // get the bottom right coordinate of the big pixel
-        const point_t br = { CLAMP(cc.x + pixel_radius, 0, width - 1),
-                             CLAMP(cc.y + pixel_radius, 0, height - 1) };
-
-        // get the bounding box + center point coordinates
-        const point_t box[5] = { tl, { br.x, tl.y }, cc, { tl.x, br.y }, br };
-
-        // find the average color over the big pixel
-        dt_aligned_pixel_t RGB = { 0.f };
-        for(size_t k = 0; k < 5; k++)
-        {
-          const float *const restrict pix_in = DT_IS_ALIGNED_PIXEL(input + (width * box[k].y + box[k].x) * 4);
-          for_four_channels(c)
-            RGB[c] += pix_in[c] / 5.f;
-        }
-
-        // paint the big pixel with solid color == average
-        for(size_t jj = tl.y; jj < br.y; jj++)
-          for(size_t ii = tl.x; ii < br.x; ii++)
-          {
-            float *const restrict pix_out = DT_IS_ALIGNED_PIXEL(output + (jj * width + ii) * 4);
-            for_four_channels(c)
-              pix_out[c] = RGB[c];
-          }
-      }
+    darkroom_censorize_pixelate(input, output,
+                                (size_t)width, (size_t)height,
+                                pixel_radius);
 
     input = output;
   }
