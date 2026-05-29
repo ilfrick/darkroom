@@ -1146,7 +1146,17 @@ target_link_libraries(lib_darktable PUBLIC ${LIBS})
 
 if(CARGO AND TARGET darkroom_core)
   add_dependencies(lib_darktable darkroom_core_rust)
-  target_link_libraries(lib_darktable PRIVATE darkroom_core)
+  # IOP plugin .so files reference Rust FFI symbols (darkroom_*) but are linked
+  # only against lib_darktable. We need libdarkroom_core.so to be loaded at
+  # program startup so the dynamic linker can resolve those symbols. Since
+  # libdarktable.so itself doesn't call any darkroom_* symbol directly, the
+  # default --as-needed linker behaviour would drop the NEEDED entry. Force it.
+  if(UNIX AND NOT APPLE)
+    target_link_libraries(lib_darktable PRIVATE
+      -Wl,--no-as-needed darkroom_core -Wl,--as-needed)
+  else()
+    target_link_libraries(lib_darktable PRIVATE darkroom_core)
+  endif()
   target_include_directories(lib_darktable PRIVATE "${CMAKE_SOURCE_DIR}/src")
 endif()
 
