@@ -1030,9 +1030,15 @@ if(CARGO)
   set(_darkroom_core_lib
       "${_cargo_target_dir}/${_rust_profile}/libdarkroom_core.so")
 
+  # Rust cdylibs have no SONAME by default; without one CMake records the
+  # absolute build-tree path in the dependent's NEEDED entry, which then
+  # fails to load at runtime. Pass -soname through rustc's linker so the
+  # resulting .so carries SONAME=libdarkroom_core.so and the loader can
+  # resolve it through libdarktable.so's RUNPATH ($ORIGIN).
   add_custom_command(
     OUTPUT  "${_darkroom_core_lib}"
     COMMAND ${CMAKE_COMMAND} -E env "CARGO_TARGET_DIR=${_cargo_target_dir}"
+            "RUSTFLAGS=-C link-arg=-Wl,-soname,libdarkroom_core.so"
             "${CARGO}" build ${_cargo_flags} -p darkroom-core
             --manifest-path "${CMAKE_SOURCE_DIR}/Cargo.toml"
     DEPENDS "${CMAKE_SOURCE_DIR}/crates/darkroom-core/Cargo.toml"
