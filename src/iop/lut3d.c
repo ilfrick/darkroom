@@ -29,6 +29,7 @@
 #include "gui/accelerators.h"
 #include "imageio/imageio_png.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 
 #include <gtk/gtk.h>
 #include <libgen.h>
@@ -231,66 +232,7 @@ static void _correct_pixel_trilinear(const float *const in,
                                      const float *const restrict clut,
                                      const uint16_t level)
 {
-  const int level_minus_2 = (level - 2);
-  const size_t level2 = level * level;
-  const float flevel_1 = (float)(level - 1);
-  const size_t level1_stride = 3 * level;
-  const size_t level2_stride = 3 * level2;
-  const size_t level12_stride = 3 * (level + level2);
-
-  DT_OMP_FOR()
-  for(size_t k = 0; k < (size_t)(pixel_nb * 4); k+=4)
-  {
-    const float *const input = in + k;
-    float *const output = ((float *const)out) + k;
-
-    DT_ALIGNED_PIXEL int rgbi[4];
-    dt_aligned_pixel_t rgbd;
-    dt_aligned_pixel_t tmp1, tmp2, tmp3;
-
-    // scale the input according to grid size
-    for_each_channel(c, aligned(input))
-      rgbd[c] = CLIP(input[c]) * flevel_1;
-    // quantize to grid
-    for_each_channel(c)
-      rgbi[c] = (int)rgbd[c];
-    for_each_channel(c)
-      rgbi[c] = CLAMP(rgbi[c], 0, level_minus_2);
-    // compute deltas for each channel
-    for_each_channel(c)
-      rgbd[c] -= rgbi[c]; // delta red/green/blue
-
-    size_t color = rgbi[0] + level * rgbi[1] + level2 * rgbi[2];
-
-    const size_t i = color * 3;  // P000
-
-    const float one_minus_rgbd0 = 1.0f - rgbd[0];
-    const float one_minus_rgbd1 = 1.0f - rgbd[1];
-
-    // process indexes of P000 to P111 in clut
-    for_each_channel(c) // P000 and P100
-      tmp1[c] = clut[i+c] * one_minus_rgbd0 + clut[i+3+c] * rgbd[0];
-
-    for_each_channel(c) // P010 and P110
-      tmp2[c] = clut[i+level1_stride+c] * one_minus_rgbd0 + clut[i+level1_stride+3+c] * rgbd[0];
-
-    for_each_channel(c) // blend P000/P100 with P010/P110
-      tmp3[c] = tmp1[c] * one_minus_rgbd1 + tmp2[c] * rgbd[1];
-
-    for_each_channel(c) // P001 and P101
-      tmp1[c] = clut[i+level2_stride+c] * one_minus_rgbd0 + clut[i+level2_stride+3+c] * rgbd[0];
-
-    for_each_channel(c) // P011 and P111
-      tmp2[c] = clut[i+level12_stride+c] * one_minus_rgbd0 + clut[i+level12_stride+3+c] * rgbd[0];
-
-    for_each_channel(c) // blend P001/P101 and P011/P111
-      tmp1[c] = tmp1[c] * one_minus_rgbd1 + tmp2[c] * rgbd[1];
-
-    for_each_channel(c, aligned(output))
-      output[c] = tmp3[c] * (1.0f - rgbd[2]) + tmp1[c] * rgbd[2];
-    // not using non-temporal writes here, as those are substantially slower when in==out....
-    // (which is the case when performing a colorspace conversion)
- }
+  darkroom_lut3d_trilinear(in, out, pixel_nb, clut, level);
 }
 
 // from OpenColorIO
@@ -301,91 +243,7 @@ static void _correct_pixel_tetrahedral(const float *const in,
                                        const float *const restrict clut,
                                        const uint16_t level)
 {
-  const size_t level2 = level * level;
-  const size_t level1_stride = 3 * level;
-  const size_t level2_stride = 3 * level2;
-  const size_t level12_stride = 3 * (level + level2);
-  const float flevel_1 = (float)(level - 1);
-
-  DT_OMP_FOR()
-  for(size_t k = 0; k < (size_t)(pixel_nb * 4); k+=4)
-  {
-    const float *const input = in + k;
-    float *const output = ((float *const)out) + k;
-
-    dt_aligned_pixel_t rgbi;
-    dt_aligned_pixel_t rgbd;
-    for_each_channel(c)
-      rgbd[c] = CLIP(input[c]) * flevel_1;
-
-    for_each_channel(c)
-    {
-      rgbi[c] = CLAMP((int)rgbd[c], 0, level - 2);
-      rgbd[c] = rgbd[c] - rgbi[c]; // delta red/green/blue
-    }
-
-    // indexes of P000 to P111 in clut
-    const size_t color = rgbi[0] + rgbi[1] * level + rgbi[2] * level2;
-    const size_t i000 = color * 3;                     // P000
-    const size_t i100 = i000 + 3;                      // P100
-    const size_t i010 = i000 + level1_stride;          // P010
-    const size_t i110 = i010 + 3;                      // P110
-    const size_t i001 = i000 + level2_stride;          // P001
-    const size_t i101 = i001 + 3;                      // P101
-    const size_t i011 = i000 + level12_stride;         // P011
-    const size_t i111 = i011 + 3;                      // P111
-
-    if(rgbd[0] > rgbd[1])
-    {
-      if(rgbd[1] > rgbd[2])
-      {
-        // rgbd[0] > rgbd[1] > rgbd[2]
-        for_each_channel(c, aligned(output))
-          output[c] = ((1-rgbd[0])*clut[i000+c] + (rgbd[0]-rgbd[1])*clut[i100+c]
-                      + (rgbd[1]-rgbd[2])*clut[i110+c] + rgbd[2]*clut[i111+c]);
-      }
-      else if(rgbd[0] > rgbd[2])
-      {
-        // rgbd[0] > rgbd[2] >= rgbd[1]
-        for_each_channel(c, aligned(output))
-          output[c] = ((1-rgbd[0])*clut[i000+c] + (rgbd[0]-rgbd[2])*clut[i100+c]
-                      + (rgbd[2]-rgbd[1])*clut[i101+c] + rgbd[1]*clut[i111+c]);
-      }
-      else
-      {
-        // rgbd[2] >= rgbd[0] > rgbd[2]
-        for_each_channel(c, aligned(output))
-          output[c] = ((1-rgbd[2])*clut[i000+c] + (rgbd[2]-rgbd[0])*clut[i001+c]
-                      + (rgbd[0]-rgbd[1])*clut[i101+c] + rgbd[1]*clut[i111+c]);
-      }
-    }
-    else
-    {
-      if(rgbd[2] > rgbd[1])
-      {
-        // rgbd[2] > rgbd[1] >= rgbd[0]
-        for_each_channel(c, aligned(output))
-          output[c] = ((1-rgbd[2])*clut[i000+c] + (rgbd[2]-rgbd[1])*clut[i001+c]
-                      + (rgbd[1]-rgbd[0])*clut[i011+c] + rgbd[0]*clut[i111+c]);
-      }
-      else if(rgbd[2] > rgbd[0])
-      {
-        // rgbd[1] >= rgbd[2] > rgbd[0]
-        for_each_channel(c, aligned(output))
-          output[c] = ((1-rgbd[1])*clut[i000+c] + (rgbd[1]-rgbd[2])*clut[i010+c]
-                      + (rgbd[2]-rgbd[0])*clut[i011+c] + rgbd[0]*clut[i111+c]);
-      }
-      else
-      {
-        // rgbd[1] >= rgbd[0] >= rgbd[2]
-        for_each_channel(c, aligned(output))
-          output[c] = ((1-rgbd[1])*clut[i000+c] + (rgbd[1]-rgbd[0])*clut[i010+c]
-                      + (rgbd[0]-rgbd[2])*clut[i110+c] + rgbd[2]*clut[i111+c]);
-      }
-    }
-    // not using non-temporal writes here, as those are substantially slower when in==out....
-    // (which is the case when performing a colorspace conversion)
-  }
+  darkroom_lut3d_tetrahedral(in, out, pixel_nb, clut, level);
 }
 
 // from Study on the 3D Interpolation Models Used in Color Conversion
@@ -396,66 +254,7 @@ static void _correct_pixel_pyramid(const float *const in,
                                    const float *const restrict clut,
                                    const uint16_t level)
 {
-  const int level2 = level * level;
-  const float flevel_1 = (float)(level - 1);
-
-  DT_OMP_FOR()
-  for(size_t k = 0; k < (size_t)(pixel_nb * 4); k+=4)
-  {
-    const float *const input = in + k;
-    float *const output = ((float *const)out) + k;
-
-    DT_ALIGNED_PIXEL int rgbi[4];
-    dt_aligned_pixel_t rgbd;
-    // scale the input according to grid size
-    for_each_channel(c)
-      rgbd[c] = CLIP(input[c]) * flevel_1;
-    // clip coordinates to LUT grid
-    for_each_channel(c)
-      rgbi[c] = (int)rgbd[c];
-    for_each_channel(c)
-      rgbi[c] = CLAMP(rgbi[c], 0, level - 2);
-    // compute deltas for each channel
-    for_each_channel(c)
-      rgbd[c] -= rgbi[c];
-
-  // indexes of P000 to P111 in clut
-    const int color = rgbi[0] + rgbi[1] * level + rgbi[2] * level2;
-    const size_t i000 = color * 3;                     // P000
-    const size_t i100 = i000 + 3;                      // P100
-    const size_t i010 = (color + level) * 3;           // P010
-    const size_t i110 = i010 + 3;                      // P110
-    const size_t i001 = (color + level2) * 3;          // P001
-    const size_t i101 = i001 + 3;                      // P101
-    const size_t i011 = (color + level + level2) * 3;  // P011
-    const size_t i111 = i011 + 3;                      // P111
-
-    dt_aligned_pixel_t outpx;
-    if(rgbd[1] > rgbd[0] && rgbd[2] > rgbd[0])
-    {
-      for_each_channel(c)
-        outpx[c] = (clut[i000+c] + (clut[i111+c]-clut[i011+c])*rgbd[0]
-                    + (clut[i010+c]-clut[i000+c])*rgbd[1] + (clut[i001+c]-clut[i000+c])*rgbd[2]
-                    + (clut[i011+c]-clut[i001+c]-clut[i010+c]+clut[i000+c])*rgbd[1]*rgbd[2]);
-    }
-    else if(rgbd[0] > rgbd[1] && rgbd[2] > rgbd[1])
-    {
-      for_each_channel(c)
-        outpx[c] = (clut[i000+c] + (clut[i100+c]-clut[i000+c])*rgbd[0]
-                    + (clut[i111+c]-clut[i101+c])*rgbd[1] + (clut[i001+c]-clut[i000+c])*rgbd[2]
-                    + (clut[i101+c]-clut[i001+c]-clut[i100+c]+clut[i000+c])*rgbd[0]*rgbd[2]);
-    }
-    else
-    {
-      for_each_channel(c)
-         outpx[c] = clut[i000+c] + (clut[i100+c]-clut[i000+c])*rgbd[0]
-                  + (clut[i010+c]-clut[i000+c])*rgbd[1] + (clut[i111+c]-clut[i110+c])*rgbd[2]
-                  + (clut[i110+c]-clut[i100+c]-clut[i010+c]+clut[i000+c])*rgbd[0]*rgbd[1];
-    }
-    // not using non-temporal writes here, as those are substantially slower when in==out....
-    // (which is the case when performing a colorspace conversion)
-    copy_pixel(output, outpx);
-  }
+  darkroom_lut3d_pyramid(in, out, pixel_nb, clut, level);
 }
 
 #ifdef HAVE_GMIC

@@ -747,6 +747,21 @@ void darkroom_watermark_blend(const float *in_buf,
                               const unsigned char *watermark,
                               float opacity);
 
+/* 3D-LUT interpolation — trilinear, tetrahedral, and pyramid variants.
+ * Replace DT_OMP_FOR loops in _correct_pixel_* in lut3d.c.
+ * clut: 3 × level³ floats (RGB per grid point, no alpha padding).
+ * Output alpha is always 0.
+ */
+void darkroom_lut3d_trilinear(const float *in_buf, float *out_buf,
+                              size_t npixels,
+                              const float *clut, uint16_t level);
+void darkroom_lut3d_tetrahedral(const float *in_buf, float *out_buf,
+                                size_t npixels,
+                                const float *clut, uint16_t level);
+void darkroom_lut3d_pyramid(const float *in_buf, float *out_buf,
+                            size_t npixels,
+                            const float *clut, uint16_t level);
+
 /* colorout Lab→XYZ→RGB using pre-transposed 3×4 colormatrix.
  * Replaces DT_OMP_FOR in _transform_cmatrix_linear() in colorout.c.
  * cmatrix: 12 floats, row-major (3 rows × 4), output of transpose_3xSSE().
