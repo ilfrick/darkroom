@@ -690,7 +690,6 @@ static inline void _loop_switch(const float *const restrict in,
       break;
   }
   const float minval = clip ? 0.0f : -FLT_MAX;
-  const dt_aligned_pixel_t min_value = { minval, minval, minval, minval };
 
   dt_colormatrix_t RGB_to_XYZ_trans;
   dt_colormatrix_transpose(RGB_to_XYZ_trans, RGB_to_XYZ);
