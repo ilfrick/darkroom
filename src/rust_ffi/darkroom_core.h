@@ -736,6 +736,17 @@ void darkroom_temperature_process_rgb(const float *in_buf,
                                       size_t npixels,
                                       const float *coeffs);
 
+/* Alpha-composite a Cairo BGRA watermark over a float RGBA image.
+ * Replaces the DT_OMP_FOR loop in watermark.c::process().
+ * watermark: Cairo-rendered 8-bit BGRA (4 bytes per pixel).
+ * o[rgb] = (1-alpha)*in[rgb] + opacity*(wm[rgb]/255); o[3] = in[3].
+ */
+void darkroom_watermark_blend(const float *in_buf,
+                              float *out_buf,
+                              size_t npixels,
+                              const unsigned char *watermark,
+                              float opacity);
+
 /* colorout Lab→XYZ→RGB using pre-transposed 3×4 colormatrix.
  * Replaces DT_OMP_FOR in _transform_cmatrix_linear() in colorout.c.
  * cmatrix: 12 floats, row-major (3 rows × 4), output of transpose_3xSSE().
