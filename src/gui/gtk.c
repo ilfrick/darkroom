@@ -1814,6 +1814,19 @@ static gboolean _dt_handle_terminate_signal(gpointer user_data)
 }
 #endif
 
+// Periodically flush the dt_conf hash to disk. In containerised
+// deployments the desktop session (openbox) is often torn down by
+// SIGKILL when the container stops, so even our signal handlers don't
+// run. Without periodic saves, every preference change made in the
+// current session would be lost on `docker stop`. We run this on the
+// GTK main loop so the write is serialised with conf mutations.
+static gboolean _dt_periodic_conf_save(gpointer user_data)
+{
+  (void)user_data;
+  if(darktable.conf) dt_conf_save(darktable.conf);
+  return G_SOURCE_CONTINUE;
+}
+
 void dt_gui_gtk_run(dt_gui_gtk_t *gui)
 {
   GtkWidget *widget = dt_ui_center(darktable.gui->ui);
@@ -1837,6 +1850,8 @@ void dt_gui_gtk_run(dt_gui_gtk_t *gui)
   g_unix_signal_add(SIGINT,  _dt_handle_terminate_signal, NULL);
   g_unix_signal_add(SIGHUP,  _dt_handle_terminate_signal, NULL);
 #endif
+  // Flush dt_conf every 30s as a safety net against SIGKILL'd shutdowns.
+  g_timeout_add_seconds(30, _dt_periodic_conf_save, NULL);
   /* start the event loop */
   if(dt_control_running())
   {
