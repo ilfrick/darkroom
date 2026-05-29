@@ -1042,6 +1042,23 @@ int darkroom_hotpixels_bayer(const float *in_buf,
                              int min_neighbours,
                              int mark_fixed);
 
+/*
+ * CLAHE (Contrast-Limited Adaptive Histogram Equalisation).
+ * Two-pass algorithm: builds a per-pixel luminance map = (max(RGB)+min(RGB))/2,
+ * then for each row maintains a sliding (2*rad+1)^2 histogram of luminance
+ * around the centre pixel, clips it at `slope*n/BINS` with redistribution
+ * to convergence, looks up the equalised CDF value, and applies it as the
+ * new HSL.L component (round-tripping through HSL to preserve hue+saturation).
+ * Matches process() in src/iop/clahe.c. `width`/`height` are the image
+ * dimensions and the in/out buffers are tightly packed RGBA float arrays.
+ */
+void darkroom_clahe_process(const float *in_buf,
+                            float *out_buf,
+                            size_t width,
+                            size_t height,
+                            int rad,
+                            float slope);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

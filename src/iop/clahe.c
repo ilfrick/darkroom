@@ -27,6 +27,7 @@
 #include "dtgtk/resetlabel.h"
 #include "gui/gtk.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 
 #include <assert.h>
 #include <gtk/gtk.h>
@@ -91,162 +92,11 @@ void process(dt_iop_module_t *self,
              const dt_iop_roi_t *const roi_out)
 {
   dt_iop_rlce_data_t *data = piece->data;
-  const int ch = piece->colors;
 
-  // PASS1: Get a luminance map of image...
-  float *luminance = malloc(sizeof(float) * ((size_t)roi_out->width * roi_out->height));
-
-  DT_OMP_FOR()
-  for(int j = 0; j < roi_out->height; j++)
-  {
-    float *in = (float *)ivoid + (size_t)j * roi_out->width * ch;
-    float *lm = luminance + (size_t)j * roi_out->width;
-    for(int i = 0; i < roi_out->width; i++)
-    {
-      const float pmax = CLIP(max3f(in)); // Max value in RGB set
-      const float pmin = CLIP(min3f(in)); // Min value in RGB set
-      *lm = (pmax + pmin) / 2.f;    // Pixel luminosity
-      in += ch;
-      lm++;
-    }
-  }
-
-
-  // Params
   const int rad = data->radius * roi_in->scale / piece->iscale;
-
-#define BINS (256)
-
-  const float slope = data->slope;
-
-  size_t destbuf_size;
-  float *const restrict dest_buf = dt_alloc_perthread_float(roi_out->width, &destbuf_size);
-
-// CLAHE
-  DT_OMP_FOR()
-  for(int j = 0; j < roi_out->height; j++)
-  {
-    const int yMin = fmax(0, j - rad);
-    const int yMax = fmin(roi_in->height, j + rad + 1);
-    const int h = yMax - yMin;
-
-    const int xMin0 = fmax(0, 0 - rad);
-    const int xMax0 = fmin(roi_in->width - 1, rad);
-
-    int hist[BINS + 1];
-    int clippedhist[BINS + 1];
-
-    float *dest = dt_get_perthread(dest_buf, destbuf_size);
-
-    /* initially fill histogram */
-    memset(hist, 0, sizeof(int) * (BINS + 1));
-    for(int yi = yMin; yi < yMax; ++yi)
-      for(int xi = xMin0; xi < xMax0; ++xi)
-        ++hist[ROUND_POSISTIVE(luminance[(size_t)yi * roi_in->width + xi] * (float)BINS)];
-
-    // Destination row
-    memset(dest, 0, sizeof(float) * roi_out->width);
-    float *ld = dest;
-
-    for(int i = 0; i < roi_out->width; i++)
-    {
-
-      int v = ROUND_POSISTIVE(luminance[(size_t)j * roi_in->width + i] * (float)BINS);
-
-      const int xMin = fmax(0, i - rad);
-      const int xMax = i + rad + 1;
-      const int w = fmin(roi_in->width, xMax) - xMin;
-      const int n = h * w;
-
-      const int limit = (int)(slope * n / BINS + 0.5f);
-
-      /* remove left behind values from histogram */
-      if(xMin > 0)
-      {
-        const int xMin1 = xMin - 1;
-        for(int yi = yMin; yi < yMax; ++yi)
-          --hist[ROUND_POSISTIVE
-                 (luminance[(size_t)yi * roi_in->width + xMin1] * (float)BINS)];
-      }
-
-      /* add newly included values to histogram */
-      if(xMax <= roi_in->width)
-      {
-        const int xMax1 = xMax - 1;
-        for(int yi = yMin; yi < yMax; ++yi)
-          ++hist[ROUND_POSISTIVE
-                 (luminance[(size_t)yi * roi_in->width + xMax1] * (float)BINS)];
-      }
-
-      /* clip histogram and redistribute clipped entries */
-      memcpy(clippedhist, hist, sizeof(int) * (BINS + 1));
-      int ce = 0, ceb = 0;
-      do
-      {
-        ceb = ce;
-        ce = 0;
-        for(int b = 0; b <= BINS; b++)
-        {
-          const int d = clippedhist[b] - limit;
-          if(d > 0)
-          {
-            ce += d;
-            clippedhist[b] = limit;
-          }
-        }
-
-        const int d = (ce / (float)(BINS + 1));
-        const int m = ce % (BINS + 1);
-        for(int b = 0; b <= BINS; b++) clippedhist[b] += d;
-
-        if(m != 0)
-        {
-          const int s = BINS / (float)m;
-          for(int b = 0; b <= BINS; b += s) ++clippedhist[b];
-        }
-      } while(ce != ceb);
-
-      /* build cdf of clipped histogram */
-      unsigned int hMin = BINS;
-      for(int b = 0; b < hMin; b++)
-        if(clippedhist[b] != 0) hMin = b;
-
-      int cdf = 0;
-      for(int b = hMin; b <= v; b++)
-        cdf += clippedhist[b];
-
-      int cdfMax = cdf;
-      for(int b = v + 1; b <= BINS; b++)
-        cdfMax += clippedhist[b];
-
-      const int cdfMin = clippedhist[hMin];
-
-      *ld = (cdf - cdfMin) / (float)(cdfMax - cdfMin);
-
-      ld++;
-    }
-
-    // Apply row
-    float *in = ((float *)ivoid) + (size_t)j * roi_out->width * ch;
-    float *out = ((float *)ovoid) + (size_t)j * roi_out->width * ch;
-    for(int r = 0; r < roi_out->width; r++)
-    {
-      float H, S, L;
-      rgb2hsl(in, &H, &S, &L);
-      // hsl2rgb(out,H,S,( L / dest[r] ) * (L-lsmin) + lsmin );
-      hsl2rgb(out, H, S, dest[r]);
-      out += ch;
-      in += ch;
-      ld++;
-    }
-  }
-
-  dt_free_align(dest_buf);
-
-  // Cleanup
-  free(luminance);
-
-#undef BINS
+  darkroom_clahe_process((const float *)ivoid, (float *)ovoid,
+                         (size_t)roi_out->width, (size_t)roi_out->height,
+                         rad, data->slope);
 }
 
 static void radius_callback(GtkWidget *slider,
