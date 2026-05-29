@@ -150,19 +150,6 @@ int legacy_params(dt_iop_module_t *self,
   return 1;
 }
 
-DT_OMP_DECLARE_SIMD(aligned(in,out:64) aligned(slope,offset,low,high))
-static inline void clamped_scaling(float *const restrict out,
-                                   const float *const restrict in,
-                                   const dt_aligned_pixel_t slope,
-                                   const dt_aligned_pixel_t offset,
-                                   const dt_aligned_pixel_t low,
-                                   const dt_aligned_pixel_t high)
-{
-  dt_aligned_pixel_t res;
-  for_each_channel(c)
-    res[c] = CLAMPS(in[c] * slope[c] + offset[c], low[c], high[c]);
-  copy_pixel_nontemporal(out, res);
-}
 
 void process(dt_iop_module_t *self,
              dt_dev_pixelpipe_iop_t *piece,

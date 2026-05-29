@@ -313,20 +313,6 @@ int legacy_params(dt_iop_module_t *self,
 }
 
 
-static inline void _Lab_scale(const float *i, float *o)
-{
-  o[0] = i[0] / 100.0f;
-  o[1] = i[1] / 128.0f;
-  o[2] = i[2] / 128.0f;
-}
-
-
-static inline void _Lab_rescale(const float *i, float *o)
-{
-  o[0] = i[0] * 100.0f;
-  o[1] = i[1] * 128.0f;
-  o[2] = i[2] * 128.0f;
-}
 
 static inline float sign(float x)
 {

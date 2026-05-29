@@ -492,17 +492,6 @@ static const dt_iop_order_iccprofile_info_t * _get_base_profile(dt_develop_t *de
   return dt_ioppr_add_profile_info_to_list(dev, _get_base_profile_type(base_primaries), "", DT_INTENT_RELATIVE_COLORIMETRIC);
 }
 
-DT_OMP_DECLARE_SIMD()
-static inline void _desaturate_negative_values(const dt_aligned_pixel_t pix_in, dt_aligned_pixel_t pix_out)
-{
-  const float pixel_average = fmaxf((pix_in[0] + pix_in[1] + pix_in[2]) / 3.0f, 0.0f);
-  const float min_value = min3f(pix_in);
-  const float saturation_factor = min_value < 0.0f ? -pixel_average / (min_value - pixel_average) : 1.0f;
-  for_each_channel(c, aligned(pix_in, pix_out))
-  {
-    pix_out[c] = pixel_average + saturation_factor * (pix_in[c] - pixel_average);
-  }
-}
 
 typedef struct dt_iop_sigmoid_value_order_t
 {
@@ -511,58 +500,6 @@ typedef struct dt_iop_sigmoid_value_order_t
   size_t max;
 } dt_iop_sigmoid_value_order_t;
 
-static void _pixel_channel_order(const dt_aligned_pixel_t pix_in, dt_iop_sigmoid_value_order_t *pixel_value_order)
-{
-  if(pix_in[0] >= pix_in[1])
-  {
-    if(pix_in[1] > pix_in[2])
-    { // Case 1: r >= g >  b
-      pixel_value_order->max = 0;
-      pixel_value_order->mid = 1;
-      pixel_value_order->min = 2;
-    }
-    else if(pix_in[2] > pix_in[0])
-    { // Case 2: b >  r >= g
-      pixel_value_order->max = 2;
-      pixel_value_order->mid = 0;
-      pixel_value_order->min = 1;
-    }
-    else if(pix_in[2] > pix_in[1])
-    { // Case 3: r >= b >  g
-      pixel_value_order->max = 0;
-      pixel_value_order->mid = 2;
-      pixel_value_order->min = 1;
-    }
-    else
-    { // Case 4: r == g == b
-      // No change of the middle value, just assign something.
-      pixel_value_order->max = 0;
-      pixel_value_order->mid = 1;
-      pixel_value_order->min = 2;
-    }
-  }
-  else
-  {
-    if(pix_in[0] >= pix_in[2])
-    { // Case 5: g >  r >= b
-      pixel_value_order->max = 1;
-      pixel_value_order->mid = 0;
-      pixel_value_order->min = 2;
-    }
-    else if(pix_in[2] > pix_in[1])
-    { // Case 6: b >  g >  r
-      pixel_value_order->max = 2;
-      pixel_value_order->mid = 1;
-      pixel_value_order->min = 0;
-    }
-    else
-    { // Case 7: g >= b >  r
-      pixel_value_order->max = 1;
-      pixel_value_order->mid = 2;
-      pixel_value_order->min = 0;
-    }
-  }
-}
 
 void process_loglogistic_rgb_ratio(const dt_dev_pixelpipe_iop_t *piece,
                                    const void *const ivoid,
@@ -588,52 +525,6 @@ void process_loglogistic_rgb_ratio(const dt_dev_pixelpipe_iop_t *piece,
       paper_exp, film_fog, contrast_power, skew_power);
 }
 
-// Linear interpolation of hue that also preserve sum of channels
-// Assumes hue_preservation strictly in range [0, 1]
-static inline void _preserve_hue_and_energy(const dt_aligned_pixel_t pix_in,
-                                            const dt_aligned_pixel_t per_channel,
-                                            dt_aligned_pixel_t pix_out,
-                                            const dt_iop_sigmoid_value_order_t order,
-                                            const float hue_preservation)
-{
-  // Naive Hue correction of the middle channel
-  const float chroma = pix_in[order.max] - pix_in[order.min];
-  const float midscale = chroma != 0.f ? (pix_in[order.mid] - pix_in[order.min]) / chroma : 0.f;
-  const float full_hue_correction
-      = per_channel[order.min] + (per_channel[order.max] - per_channel[order.min]) * midscale;
-  const float naive_hue_mid
-      = (1.0f - hue_preservation) * per_channel[order.mid] + hue_preservation * full_hue_correction;
-
-  const float per_channel_energy = per_channel[0] + per_channel[1] + per_channel[2];
-  const float naive_hue_energy = per_channel[order.min] + naive_hue_mid + per_channel[order.max];
-  const float pix_in_min_plus_mid = pix_in[order.min] + pix_in[order.mid];
-  const float blend_factor = pix_in_min_plus_mid != 0.f ? 2.0f * pix_in[order.min] / pix_in_min_plus_mid : 0.f;
-  const float energy_target = blend_factor * per_channel_energy + (1.0f - blend_factor) * naive_hue_energy;
-
-  // Preserve hue constrained to maintain the same energy as the per channel result
-  if(naive_hue_mid <= per_channel[order.mid])
-  {
-    const float corrected_mid = ((1.0f - hue_preservation) * per_channel[order.mid]
-                                 + hue_preservation
-                                       * (midscale * per_channel[order.max]
-                                          + (1.0f - midscale) * (energy_target - per_channel[order.max])))
-                                / (1.0f + hue_preservation * (1.0f - midscale));
-    pix_out[order.min] = energy_target - per_channel[order.max] - corrected_mid;
-    pix_out[order.mid] = corrected_mid;
-    pix_out[order.max] = per_channel[order.max];
-  }
-  else
-  {
-    const float corrected_mid = ((1.0f - hue_preservation) * per_channel[order.mid]
-                                 + hue_preservation
-                                       * (per_channel[order.min] * (1.0f - midscale)
-                                          + midscale * (energy_target - per_channel[order.min])))
-                                / (1.0f + hue_preservation * midscale);
-    pix_out[order.min] = per_channel[order.min];
-    pix_out[order.mid] = corrected_mid;
-    pix_out[order.max] = energy_target - per_channel[order.min] - corrected_mid;
-  }
-}
 
 void process_loglogistic_per_channel(dt_develop_t *dev,
                                      const dt_dev_pixelpipe_iop_t *piece,

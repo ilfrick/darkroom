@@ -266,61 +266,6 @@ void commit_params(dt_iop_module_t *self, dt_iop_params_t *p1, dt_dev_pixelpipe_
   d->gamma = p->gamma;
 }
 
-static inline void _process_pixel(const dt_aligned_pixel_t pix_in,
-                                  dt_aligned_pixel_t pix_out,
-                                  const dt_aligned_pixel_t Dmin,
-                                  const dt_aligned_pixel_t wb_high,
-                                  const dt_aligned_pixel_t offset,
-                                  const dt_aligned_pixel_t black,
-                                  const dt_aligned_pixel_t exposure,
-                                  const dt_aligned_pixel_t gamma,
-                                  const dt_aligned_pixel_t soft_clip,
-                                  const dt_aligned_pixel_t soft_clip_comp)
-{
-    dt_aligned_pixel_t density;
-    // Convert transmission to density using Dmin as a fulcrum
-    dt_aligned_pixel_t clamped;
-    for_each_channel(c)
-    {
-      clamped[c] = MAX(pix_in[c],THRESHOLD);  // threshold to -32 EV
-      density[c] = Dmin[c] / clamped[c];
-    }
-    dt_aligned_pixel_t log_density;
-    dt_vector_log2(density, log_density);
-    #define LOG2_to_LOG10 0.3010299956f
-    for_each_channel(c)
-      log_density[c] *= -LOG2_to_LOG10;
-    // now log_density = -log10f( Dmin / MAX(pix_in, THRESHOLD) )
-    dt_aligned_pixel_t corrected_de;
-    for_each_channel(c)
-    {
-      // Correct density in log space
-      corrected_de[c] = wb_high[c] * log_density[c] + offset[c];
-    }
-    dt_aligned_pixel_t ten_to_x;
-    dt_vector_exp10(corrected_de, ten_to_x);
-    dt_aligned_pixel_t print_linear;
-    for_each_channel(c)
-    {
-      // Print density on paper : ((1 - 10^corrected_de + black) * exposure)^gamma rewritten for FMA
-      print_linear[c] = -(exposure[c] * ten_to_x[c] + black[c]);
-      print_linear[c] = MAX(print_linear[c], 0.0f);
-    }
-    dt_aligned_pixel_t print_gamma;
-    dt_vector_powf(print_linear, gamma, print_gamma); // note : this is always > 0
-    dt_aligned_pixel_t e_to_gamma;
-    dt_aligned_pixel_t clipped_gamma;
-    for_each_channel(c)
-      clipped_gamma[c] = -(print_gamma[c] - soft_clip[c]) / soft_clip_comp[c];
-    dt_vector_exp(clipped_gamma, e_to_gamma);
-    for_each_channel(c)
-    {
-      // Compress highlights. from https://lists.gnu.org/archive/html/openexr-devel/2005-03/msg00009.html
-      pix_out[c] = (print_gamma[c] > soft_clip[c])
-        ? soft_clip[c] + (1.0f - e_to_gamma[c]) * soft_clip_comp[c]
-        : print_gamma[c];
-    }
-}
 
 void process(dt_iop_module_t *const self, dt_dev_pixelpipe_iop_t *const piece,
              const void *const restrict ivoid, void *const restrict ovoid,
