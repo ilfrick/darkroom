@@ -33,6 +33,7 @@
 #include "gui/gtk.h"
 #include "gui/presets.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 #include <gtk/gtk.h>
 #include <math.h>
 #include <pango/pangocairo.h>
@@ -480,13 +481,6 @@ _agx_get_base_profile(dt_develop_t *dev,
   return selected_profile_info;
 }
 
-static inline float _luminance_from_matrix(const dt_aligned_pixel_t pixel,
-                                           const dt_colormatrix_t rgb_to_xyz_transposed)
-{
-  dt_aligned_pixel_t xyz = { 0.f };
-  dt_apply_transposed_color_matrix(pixel, rgb_to_xyz_transposed, xyz);
-  return xyz[1];
-}
 
 static inline float _luminance_from_profile(dt_aligned_pixel_t pixel,
                                             const dt_iop_order_iccprofile_info_t *const profile)
@@ -617,77 +611,7 @@ static inline float _apply_curve(const float x,
   return CLAMPF(result, params->target_black, params->target_white);
 }
 
-// 'lerp', but take care of the boundary: hue wraps around 1->0
-static inline float _lerp_hue(const float original_hue,
-                              const float processed_hue,
-                              const float mix)
-{
-  // shortest signed difference in [-0.5, 0.5] there is some ambiguity
-  // (shortest distance on a circle is undefined if the points are
-  // exactly on the opposite side), but the original and processed hue
-  // are quite similar, we don't expect 180-degree shifts, and
-  // couldn't do anything about it, anyway
-  const float shortest_distance_on_hue_circle = remainderf(processed_hue - original_hue, 1.0f);
 
-  // interpolate: mix = 0 -> processed_hue; mix = 1 -> original_hue
-  // multiply-add: (1 - mix) * shortest_distance_on_hue_circle + original_hue
-  const float mixed_hue = DT_FMA(1.0f - mix, shortest_distance_on_hue_circle, original_hue);
-
-  // wrap to [0, 1)
-  return mixed_hue - floorf(mixed_hue);
-}
-
-static inline float _apply_slope_lift(const float x,
-                                        const float slope,
-                                        const float lift)
-{
-  // https://www.desmos.com/calculator/8a26bc7eb8
-  const float m = slope / (1.f + lift);
-  const float b = lift * m;
-  // m * x + b
-  return DT_FMA(m, x, b);
-}
-
-DT_OMP_DECLARE_SIMD(aligned(pixel_in_out : 16))
-static inline void _agx_look(dt_aligned_pixel_t pixel_in_out,
-                             const tone_mapping_params_t *params,
-                             const dt_colormatrix_t rendering_to_xyz_transposed)
-{
-  const float slope = params->look_slope;
-  const float lift = params->look_lift;
-  const float power = params->look_power;
-  const float sat = params->look_saturation;
-
-  for_three_channels(k, aligned(pixel_in_out : 16))
-  {
-    const float value_with_slope_and_lift = _apply_slope_lift(pixel_in_out[k], slope, lift);
-    pixel_in_out[k] =
-      value_with_slope_and_lift > 0.f
-      ? powf(value_with_slope_and_lift, power)
-      : value_with_slope_and_lift;
-  }
-
-  const float luma = _luminance_from_matrix(pixel_in_out, rendering_to_xyz_transposed);
-
-  // saturation
-  for_three_channels(k, aligned(pixel_in_out : 16))
-  {
-    pixel_in_out[k] = luma + sat * (pixel_in_out[k] - luma);
-  }
-}
-
-static inline float _apply_log_encoding(const float x,
-                                        const float range_in_ev,
-                                        const float black_relative_ev)
-{
-  // Assume input is linear RGB relative to 0.18 mid-gray
-  // Ensure value > 0 before log
-  const float x_relative = fmaxf(_epsilon, x / 0.18f);
-  // normalise to [0, 1] based on black_relative_ev and range_in_ev
-  const float mapped = (log2f(fmaxf(x_relative, 0.f)) - black_relative_ev) / range_in_ev;
-  // Clamp result to [0, 1] - this is the input domain for the curve
-  return CLIP(mapped);
-}
 
 // see https://www.desmos.com/calculator/gijzff3wlv
 static inline float _calculate_slope_matching_power(const float slope,
@@ -704,71 +628,6 @@ static inline float _calculate_fallback_curve_coefficient(const float dx_transit
   return dy_transition_to_limit / powf(dx_transition_to_limit, exponent);
 }
 
-static inline void _compress_into_gamut(dt_aligned_pixel_t pixel_in_out)
-{
-  // Blender: https://github.com/EaryChow/AgX_LUT_Gen/blob/main/luminance_compenstation_bt2020.py
-  // Calculate original luminance
-  const float luminance_coeffs[] = { 0.2658180370250449f, 0.59846986045365f, 0.1357121025213052f };
-
-  const float input_y = pixel_in_out[0] * luminance_coeffs[0]
-                      + pixel_in_out[1] * luminance_coeffs[1]
-                      + pixel_in_out[2] * luminance_coeffs[2];
-  const float max_rgb = max3f(pixel_in_out);
-
-  // Calculate luminance of the opponent color, and use it to
-  // compensate for negative luminance values
-  dt_aligned_pixel_t opponent_rgb = { 0.f };
-  for_each_channel(c, aligned(opponent_rgb, pixel_in_out))
-  {
-    opponent_rgb[c] = max_rgb - pixel_in_out[c];
-  }
-
-  const float opponent_y = opponent_rgb[0] * luminance_coeffs[0]
-                         + opponent_rgb[1] * luminance_coeffs[1]
-                         + opponent_rgb[2] * luminance_coeffs[2];
-  const float max_opponent = max3f(opponent_rgb);
-
-  const float y_compensate_negative = max_opponent - opponent_y + input_y;
-
-  // Offset the input tristimulus such that there are no negatives
-  const float min_rgb = min3f(pixel_in_out);
-  const float offset = fmaxf(-min_rgb, 0.f);
-  dt_aligned_pixel_t rgb_offset = { 0.f };
-  for_each_channel(c, aligned(rgb_offset, pixel_in_out))
-  {
-    rgb_offset[c] = pixel_in_out[c] + offset;
-  }
-
-  const float max_of_rgb_offset = max3f(rgb_offset);
-
-  // Calculate luminance of the opponent color, and use it to
-  // compensate for negative luminance values
-  dt_aligned_pixel_t opponent_rgb_offset = { 0.f };
-  for_each_channel(c, aligned(opponent_rgb_offset, rgb_offset))
-  {
-    opponent_rgb_offset[c] = max_of_rgb_offset - rgb_offset[c];
-  }
-
-  const float max_inverse_rgb_offset = max3f(opponent_rgb_offset);
-  const float y_inverse_rgb_offset = opponent_rgb_offset[0] * luminance_coeffs[0]
-                                   + opponent_rgb_offset[1] * luminance_coeffs[1]
-                                   + opponent_rgb_offset[2] * luminance_coeffs[2];
-  float y_new = rgb_offset[0] * luminance_coeffs[0]
-              + rgb_offset[1] * luminance_coeffs[1]
-              + rgb_offset[2] * luminance_coeffs[2];
-  y_new = max_inverse_rgb_offset - y_inverse_rgb_offset + y_new;
-
-  // Compensate the intensity to match the original luminance; avoid div by 0 or tiny number
-  const float luminance_ratio =
-    (y_new > y_compensate_negative && y_new > _epsilon)
-    ? y_compensate_negative / y_new
-    : 1.f;
-
-  for_each_channel(c, aligned(pixel_in_out, rgb_offset))
-  {
-    pixel_in_out[c] = luminance_ratio * rgb_offset[c];
-  }
-}
 
 static inline float _calculate_pivot_y_at_gamma(const dt_iop_agx_params_t * p,
                                                 const float gamma)
@@ -1054,51 +913,6 @@ static void _adjust_relative_exposure_from_exposure_params(dt_iop_module_t *self
   _update_pivot_x(old_black_ev, old_white_ev, self, p);
 }
 
-static void _agx_tone_mapping(dt_aligned_pixel_t rgb_in_out,
-                              const tone_mapping_params_t *params,
-                              const dt_colormatrix_t rendering_to_xyz_transposed)
-{
-  // record current chromaticity angle
-  dt_aligned_pixel_t hsv_pixel = { 0.f };
-  if(params->restore_hue)
-    dt_RGB_2_HSV(rgb_in_out, hsv_pixel);
-  const float h_before = hsv_pixel[0];
-
-  dt_aligned_pixel_t transformed_pixel = { 0.f };
-
-  for_three_channels(k, aligned(rgb_in_out, transformed_pixel : 16))
-  {
-    const float log_value = _apply_log_encoding(rgb_in_out[k], params->range_in_ev, params->black_relative_ev);
-    transformed_pixel[k] = _apply_curve(log_value, params);
-  }
-
-  if(params->look_tuned)
-    _agx_look(transformed_pixel, params, rendering_to_xyz_transposed);
-
-  // Linearize
-  for_three_channels(k, aligned(transformed_pixel : 16))
-  {
-    transformed_pixel[k] = powf(fmaxf(0.f, transformed_pixel[k]), params->curve_gamma);
-  }
-
-  // get post-curve chroma angle
-  if(params->restore_hue)
-  {
-    dt_RGB_2_HSV(transformed_pixel, hsv_pixel);
-
-    float h_after = hsv_pixel[0];
-
-    // Mix hue back if requested
-    h_after = _lerp_hue(h_before, h_after, params->look_original_hue_mix_ratio);
-
-    hsv_pixel[0] = h_after;
-    dt_HSV_2_RGB(hsv_pixel, rgb_in_out);
-  }
-  else
-  {
-    copy_pixel(rgb_in_out, transformed_pixel);
-  }
-}
 
 static void _apply_auto_black_exposure(const dt_iop_module_t *self)
 {
@@ -1372,45 +1186,13 @@ void process(dt_iop_module_t *self,
 
   const gboolean base_working_same_profile = pipe_work_profile == base_profile;
 
-  DT_OMP_FOR()
-  for(size_t k = 0; k < 4 * n_pixels; k += 4)
-  {
-    const float *const restrict pix_in = in + k;
-    dt_aligned_pixel_t sanitised_in = { 0.f };
-    for_each_channel(c)
-    {
-      const float component = pix_in[c];
-      // allow about 22.5 EV above mid-gray, including out-of-gamut pixels, getting rid of NaNs
-      sanitised_in[c] = isnan(component) ? 0.f : CLAMPF(component, -1e6f, 1e6f);
-    }
-    float *const restrict pix_out = out + k;
-
-    // Convert from pipe working space to base space
-    dt_aligned_pixel_t base_rgb = { 0.f };
-    if(base_working_same_profile)
-    {
-      copy_pixel(base_rgb, sanitised_in);
-    }
-    else
-    {
-      dt_apply_transposed_color_matrix(sanitised_in, pipe_to_base_transposed, base_rgb);
-    }
-
-    _compress_into_gamut(base_rgb);
-
-    dt_aligned_pixel_t rendering_rgb = { 0.f };
-    dt_apply_transposed_color_matrix(base_rgb, base_to_rendering_transposed, rendering_rgb);
-
-    // Apply the tone mapping curve and look adjustments
-    _agx_tone_mapping(rendering_rgb, &d->tone_mapping_params,
-                      rendering_profile.matrix_in_transposed);
-
-    // Convert from internal rendering space back to pipe working space
-    dt_apply_transposed_color_matrix(rendering_rgb, rendering_to_pipe_transposed, pix_out);
-
-    // Copy over the alpha channel
-    pix_out[3] = sanitised_in[3];
-  }
+  darkroom_agx_process(in, out, n_pixels,
+                       (const float*)pipe_to_base_transposed,
+                       (const float*)base_to_rendering_transposed,
+                       (const float*)rendering_to_pipe_transposed,
+                       (const float*)rendering_profile.matrix_in_transposed,
+                       (int)base_working_same_profile,
+                       &d->tone_mapping_params);
 }
 
 static gboolean _agx_draw_curve(GtkWidget *widget,

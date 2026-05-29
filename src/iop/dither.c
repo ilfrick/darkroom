@@ -39,6 +39,7 @@
 
 #include <gtk/gtk.h>
 #include <inttypes.h>
+#include "rust_ffi/darkroom_core.h"
 
 DT_MODULE_INTROSPECTION(2, dt_iop_dither_params_t)
 
@@ -637,17 +638,7 @@ static void _process_posterize(
   const float f = levels - 1;
   const float rf = 1.0f / f;
 
-  DT_OMP_FOR()
-  for(int k = 0; k < npixels; k++)
-  {
-    dt_aligned_pixel_t pixel;
-    // quantize the pixel into the desired number of levels per color channel
-    for_each_channel(c)
-      pixel[c] = _quantize(in[4*k + c], f, rf);
-    // and write the quantized result to the output buffer
-    copy_pixel_nontemporal(out + 4*k, pixel);
-  }
-  dt_omploop_sfence(); // ensure that all nontemporal write complete before proceeding
+  darkroom_dither_posterize(in, out, npixels, f, rf);
 }
 
 

@@ -3,9 +3,11 @@
 //! Each IOP from src/iop/*.c will become a struct in this module
 //! implementing `IopProcess`. Migration order follows RUST_MIGRATION_PLAN.md.
 
+pub mod agx;
 pub mod basicadj;
 pub mod bloom;
 pub mod globaltonemap;
+pub mod dither;
 pub mod highpass;
 pub mod invert;
 pub mod monochrome;

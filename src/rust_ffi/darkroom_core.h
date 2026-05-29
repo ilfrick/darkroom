@@ -694,6 +694,40 @@ void darkroom_invert_process(const float *in_buf,
                              const float *color);
 
 /*
+ * Dither IOP — posterize path only.
+ *
+ * Replaces the DT_OMP_FOR loop in _process_posterize() in src/iop/dither.c.
+ * f = levels - 1  (pre-computed by caller).
+ * rf = 1.0f / f   (pre-computed by caller).
+ * _quantize(x) = rf * ceilf(x*f - 0.5) — rounds up only when frac > 0.5.
+ * All 4 channels including alpha are quantized identically.
+ */
+void darkroom_dither_posterize(const float *in_buf,
+                               float *out_buf,
+                               size_t npixels,
+                               float f,
+                               float rf);
+
+/*
+ * AgX IOP — full per-pixel tone mapping pipeline.
+ *
+ * Replaces the DT_OMP_FOR loop in src/iop/agx.c::process().
+ * pipe_to_base / base_to_rendering / rendering_to_pipe / rendering_to_xyz:
+ *   each 16 floats (dt_colormatrix_t = float[4][4] row-major, transposed).
+ * base_working_same_profile: non-zero skips the pipe_to_base matrix.
+ * params: pointer to tone_mapping_params_t (same ABI as AgxToneMappingParams).
+ */
+void darkroom_agx_process(const float *in_buf,
+                          float *out_buf,
+                          size_t npixels,
+                          const float *pipe_to_base,
+                          const float *base_to_rendering,
+                          const float *rendering_to_pipe,
+                          const float *rendering_to_xyz,
+                          int base_working_same_profile,
+                          const void *params);
+
+/*
  * Filmic IOP pixel loop (Lab-space filmic tone-mapping).
  *
  * Replaces the DT_OMP_FOR loop in src/iop/filmic.c::process().
