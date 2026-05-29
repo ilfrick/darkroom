@@ -17,6 +17,9 @@
 */
 
 #include "common/darktable.h"
+#ifdef G_OS_UNIX
+#include <glib-unix.h>
+#endif
 #ifdef HAVE_GPHOTO2
 #include "common/camera_control.h"
 #endif
@@ -1795,6 +1798,22 @@ int dt_gui_gtk_init(dt_gui_gtk_t *gui)
   return 0;
 }
 
+#ifdef G_OS_UNIX
+// Handle SIGTERM/SIGINT (e.g. from `docker stop` or Ctrl-C in a terminal)
+// by initiating the normal Darkroom shutdown sequence. Without this the
+// process is killed mid-flight, dt_cleanup() never runs, and the
+// in-memory dt_conf hash table is never flushed to darktablerc — so
+// language, panel layout, and every other user setting is lost.
+// g_unix_signal_add bridges the async-signal-safety problem by
+// dispatching the signal as a GSource on the main loop.
+static gboolean _dt_handle_terminate_signal(gpointer user_data)
+{
+  (void)user_data;
+  dt_control_quit();
+  return G_SOURCE_REMOVE;
+}
+#endif
+
 void dt_gui_gtk_run(dt_gui_gtk_t *gui)
 {
   GtkWidget *widget = dt_ui_center(darktable.gui->ui);
@@ -1812,6 +1831,11 @@ void dt_gui_gtk_run(dt_gui_gtk_t *gui)
 #endif
 #ifdef GDK_WINDOWING_QUARTZ
   dt_osx_focus_window();
+#endif
+#ifdef G_OS_UNIX
+  g_unix_signal_add(SIGTERM, _dt_handle_terminate_signal, NULL);
+  g_unix_signal_add(SIGINT,  _dt_handle_terminate_signal, NULL);
+  g_unix_signal_add(SIGHUP,  _dt_handle_terminate_signal, NULL);
 #endif
   /* start the event loop */
   if(dt_control_running())
