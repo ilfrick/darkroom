@@ -47,6 +47,7 @@ pub mod colorin;
 pub mod temperature;
 pub mod watermark;
 pub mod zonesystem;
+pub mod channelmixerrgb;
 
 use crate::{params::IopParams, roi::RoiIn, Result};
 

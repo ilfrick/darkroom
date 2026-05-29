@@ -779,6 +779,39 @@ void darkroom_colorin_cmatrix_fastpath_simple(const float *in_buf,
                                               const float *corr,
                                               const float *cmatrix);
 
+/*
+ * ChannelMixerRGB IOP — per-pixel chromatic adaptation + mix + luma/chroma.
+ *
+ * Replaces the DT_OMP_FOR pixel loop inside _loop_switch() in channelmixerrgb.c.
+ * The C caller pre-computes RGB_to_LMS and MIX_to_XYZ from kind, then transposes
+ * all four matrices before calling here.  All matrix pointers are flat float[4][4]
+ * (16 floats, row-stride 4, pre-transposed).
+ * illuminant/saturation/lightness/grey: each 4 floats (dt_aligned_pixel_t).
+ * minval: 0.0 when clip==true, -FLT_MAX otherwise.
+ * p: Bradford power = powf(illuminant[2]/BRADFORD_D50[2], 0.0834).
+ * gamut: chromaticity compression exponent (0 = off).
+ * kind: 0=LINEAR_BRADFORD, 1=CAT16, 2=FULL_BRADFORD, 3=XYZ, 4=RGB/bypass.
+ * version: 0=V1, 1=V2, 2=V3.
+ */
+void darkroom_channelmixerrgb_loop_switch(const float *in_buf,
+                                          float *out_buf,
+                                          size_t npixels,
+                                          const float *rgb_to_xyz_trans,
+                                          const float *rgb_to_lms_trans,
+                                          const float *mix_to_xyz_trans,
+                                          const float *xyz_to_rgb_trans,
+                                          float minval,
+                                          const float *illuminant,
+                                          const float *saturation,
+                                          const float *lightness,
+                                          const float *grey,
+                                          float p,
+                                          float gamut,
+                                          int clip,
+                                          int apply_grey,
+                                          int kind,
+                                          int version);
+
 /* colorout Lab→XYZ→RGB using pre-transposed 3×4 colormatrix.
  * Replaces DT_OMP_FOR in _transform_cmatrix_linear() in colorout.c.
  * cmatrix: 12 floats, row-major (3 rows × 4), output of transpose_3xSSE().
