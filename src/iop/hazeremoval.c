@@ -42,6 +42,7 @@
 #include "gui/accelerators.h"
 #include "develop/tiling.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 
 #ifdef HAVE_OPENCL
 #include "common/opencl.h"
@@ -317,15 +318,7 @@ static void _dark_channel(const const_rgb_image img1,
                           const int w)
 {
   const size_t size = (size_t)img1.height * img1.width;
-  const float *const restrict in_data = img1.data;
-  float *const restrict out_data = img2.data;
-  DT_OMP_FOR_SIMD(aligned(in_data, out_data: 64))
-  for(size_t i = 0; i < size; i++)
-  {
-    const float *pixel = in_data + 4*i;
-    float m = MIN(MIN(pixel[0], pixel[1]),pixel[2]);
-    out_data[i] = m;
-  }
+  darkroom_hazeremoval_dark_channel(img1.data, img2.data, size);
   dt_box_min(img2.data, img2.height, img2.width, 1, w);
 }
 
@@ -338,18 +331,8 @@ static void _transition_map(const const_rgb_image img1,
                             const float strength)
 {
   const size_t size = (size_t)img1.height * img1.width;
-  const float *const restrict in_data = img1.data;
-  float *const restrict out_data = img2.data;
   const dt_aligned_pixel_t A0_inv = { 1.0f / A0[0], 1.0f / A0[1], 1.0f / A0[2], 1.0f };
-  DT_OMP_FOR_SIMD(aligned(in_data, out_data: 64))
-
-  for(size_t i = 0; i < size; i++)
-  {
-    const float *pixel = in_data + 4*i;
-    const float m = MIN(MIN(pixel[0] * A0_inv[0], pixel[1] * A0_inv[1]),
-                        pixel[2] * A0_inv[2]);
-    out_data[i] = 1.f - m * strength;
-  }
+  darkroom_hazeremoval_transition_map(img1.data, img2.data, size, A0_inv, strength);
   dt_box_max(img2.data, img2.height, img2.width, 1, w);
 }
 
@@ -679,17 +662,7 @@ void process(dt_iop_module_t *self,
       "tmin=%.4f distance_max=%.4f A0=%.4f %.4f %.4f", t_min, distance_max, A0[0], A0[1], A0[2]);
 
   const dt_aligned_pixel_t c_A0 = { A0[0], A0[1], A0[2], A0[3] };
-  const gray_image c_trans_map_filtered = trans_map_filtered;
-  DT_OMP_FOR()
-  for(size_t i = 0; i < size; i++)
-  {
-    const float t = MAX(c_trans_map_filtered.data[i], t_min);
-    dt_aligned_pixel_t res;
-    for_each_channel(c, aligned(in))
-      res[c] =  (in[4*i + c] - c_A0[c]) / t + c_A0[c];
-    copy_pixel_nontemporal(out + 4*i, res);
-  }
-  dt_omploop_sfence();
+  darkroom_hazeremoval_dehaze(in, out, trans_map_filtered.data, size, c_A0, t_min);
 
   free_gray_image(&trans_map);
   free_gray_image(&trans_map_filtered);

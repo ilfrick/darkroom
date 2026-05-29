@@ -49,6 +49,7 @@ pub mod watermark;
 pub mod zonesystem;
 pub mod channelmixerrgb;
 pub mod basecurve;
+pub mod hazeremoval;
 
 use crate::{params::IopParams, roi::RoiIn, Result};
 

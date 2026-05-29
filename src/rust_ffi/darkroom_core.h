@@ -887,6 +887,41 @@ void darkroom_basecurve_apply_legacy_curve(const float *in_buf,
 void darkroom_basecurve_compute_features(float *buf,
                                          size_t npixels);
 
+/*
+ * Hazeremoval IOP — per-pixel dark channel.
+ * Writes min(R,G,B) of each RGBA input pixel into a gray scalar output.
+ * Matches the inner loop of _dark_channel() in src/iop/hazeremoval.c.
+ */
+void darkroom_hazeremoval_dark_channel(const float *in_buf,
+                                       float *out_buf,
+                                       size_t npixels);
+
+/*
+ * Hazeremoval IOP — per-pixel transition map.
+ * out[i] = 1 - min(min(R*a0_inv[0], G*a0_inv[1]), B*a0_inv[2]) * strength
+ * Matches the inner loop of _transition_map() in src/iop/hazeremoval.c.
+ * a0_inv is a 3-float array of reciprocal ambient-light values.
+ */
+void darkroom_hazeremoval_transition_map(const float *in_buf,
+                                         float *out_buf,
+                                         size_t npixels,
+                                         const float *a0_inv,
+                                         float strength);
+
+/*
+ * Hazeremoval IOP — final dehaze.
+ *   t = max(trans_map[i], t_min)
+ *   out[4i + c] = (in[4i + c] - a0[c]) / t + a0[c]   for c in 0..4
+ * Matches the final loop in `process()` (hazeremoval.c).
+ * a0 is a 4-float ambient-light array (RGB + alpha pad).
+ */
+void darkroom_hazeremoval_dehaze(const float *in_buf,
+                                 float *out_buf,
+                                 const float *trans_map,
+                                 size_t npixels,
+                                 const float *a0,
+                                 float t_min);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
