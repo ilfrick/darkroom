@@ -1294,11 +1294,6 @@ void process(dt_iop_module_t *self,
     }
   }
 
-  const dt_aligned_pixel_t mult =
-    { 1.f / (d->params.levels[0][2] - d->params.levels[0][0]),
-      1.f / (d->params.levels[1][2] - d->params.levels[1][0]),
-      1.f / (d->params.levels[2][2] - d->params.levels[2][0]) };
-
   const size_t npixels = (size_t)roi_out->width * roi_out->height;
   const float *const restrict in = (const float*)ivoid;
   float *const restrict out = (float*)ovoid;
