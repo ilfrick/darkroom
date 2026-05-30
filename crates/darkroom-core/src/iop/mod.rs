@@ -57,6 +57,7 @@ pub mod clahe;
 pub mod rawprepare;
 pub mod highlights;
 pub mod defringe;
+pub mod colorchecker;
 
 use crate::{params::IopParams, roi::RoiIn, Result};
 

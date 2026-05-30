@@ -6,6 +6,7 @@
 pub mod color;
 pub mod error;
 pub mod iop;
+pub mod math;
 pub mod params;
 pub mod raw;
 pub mod roi;

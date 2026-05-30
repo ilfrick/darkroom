@@ -1096,6 +1096,28 @@ float darkroom_defringe_edge_chroma_pass(const float *in_buf,
                                          int use_global_average);
 
 /*
+ * Colorchecker IOP — thin-plate-spline colour correction.
+ * Per pixel:
+ *   res[c] = patches[N][c]                            (intercept)
+ *          + polynomial_<c> dot input_Lab             (affine fall-off)
+ *          + sum_p patches[p][c] * kernel(input, sources[p])  (RBF sum)
+ * where kernel(x,y) = r^2 * fastlog(max(1e-8, r^2)).
+ * `sources` is num_patches * 4 floats; `patches` is (num_patches + 1) * 4
+ * floats (last row is the intercept). `polynomial_<c>` are 3 floats each.
+ * The alpha channel of out is zeroed (matches the C aligned-pixel init).
+ * Matches the process() loop in src/iop/colorchecker.c.
+ */
+void darkroom_colorchecker_process(const float *in_buf,
+                                   float *out_buf,
+                                   size_t npixels,
+                                   size_t num_patches,
+                                   const float *sources,
+                                   const float *patches,
+                                   const float *polynomial_L,
+                                   const float *polynomial_a,
+                                   const float *polynomial_b);
+
+/*
  * CLAHE (Contrast-Limited Adaptive Histogram Equalisation).
  * Two-pass algorithm: builds a per-pixel luminance map = (max(RGB)+min(RGB))/2,
  * then for each row maintains a sliding (2*rad+1)^2 histogram of luminance

@@ -24,6 +24,7 @@
 #include "control/control.h"
 #include "develop/develop.h"
 #include "develop/imageop.h"
+#include "rust_ffi/darkroom_core.h"
 #include "develop/imageop_math.h"
 #include "develop/openmp_maths.h"
 #include "develop/tiling.h"
@@ -627,37 +628,14 @@ void process(dt_iop_module_t *self,
       data->coeff_b[num_patches+2],
       data->coeff_b[num_patches+3], 0.0f };
 
-  DT_OMP_FOR()
-  for(int k=0; k < npixels; k++)
-  {
-    dt_aligned_pixel_t inpx;
-    copy_pixel(inpx, ((float *)ivoid) + 4*k);
-
-    // polynomial part:
-    dt_aligned_pixel_t poly_L, poly_a, poly_b;
-    for_each_channel(c)
-    {
-      poly_L[c] = (polynomial_L[c] * inpx[c]);
-      poly_a[c] = (polynomial_a[c] * inpx[c]);
-      poly_b[c] = (polynomial_b[c] * inpx[c]);
-    }
-    dt_aligned_pixel_t sums = { poly_L[0] + poly_L[1] + poly_L[2],
-      				poly_a[0] + poly_a[1] + poly_a[2],
-                                poly_b[0] + poly_b[1] + poly_b[2],
-                                0.0f };
-    dt_aligned_pixel_t res;
-    for_each_channel(c)
-      res[c] = patches[num_patches][c] + sums[c];
-    for(int p=0; p < num_patches; p++)
-    {
-      // rbf from thin plate spline
-      const float phi = kernel(inpx, sources[p]);
-      for_each_channel(c)
-        res[c] += patches[p][c] * phi;
-    }
-    copy_pixel_nontemporal(out + 4*k, res);
-  }
-  dt_omploop_sfence();
+  darkroom_colorchecker_process((const float *)ivoid, out,
+                                npixels,
+                                (size_t)num_patches,
+                                (const float *)sources,
+                                (const float *)patches,
+                                polynomial_L,
+                                polynomial_a,
+                                polynomial_b);
   dt_free_align(patches);
   dt_free_align(sources);
 }
