@@ -1043,6 +1043,25 @@ int darkroom_hotpixels_bayer(const float *in_buf,
                              int mark_fixed);
 
 /*
+ * Hotpixels IOP — multi-plane monochrome hot-pixel correction.
+ * Same shape as the Bayer variant but neighbour offsets are +/-planes and
+ * +/-planes*width (so we examine adjacent pixels of the same channel
+ * rather than skipping a Bayer cell). When fixed, every plane of the
+ * pixel is replaced with the same maximum neighbour value. Returns the
+ * count of pixels replaced.
+ * Matches _process_monochrome() in src/iop/hotpixels.c.
+ */
+int darkroom_hotpixels_monochrome(const float *in_buf,
+                                  float *out_buf,
+                                  size_t width,
+                                  size_t height,
+                                  size_t planes,
+                                  float threshold,
+                                  float multiplier,
+                                  int min_neighbours,
+                                  int mark_fixed);
+
+/*
  * CLAHE (Contrast-Limited Adaptive Histogram Equalisation).
  * Two-pass algorithm: builds a per-pixel luminance map = (max(RGB)+min(RGB))/2,
  * then for each row maintains a sliding (2*rad+1)^2 histogram of luminance

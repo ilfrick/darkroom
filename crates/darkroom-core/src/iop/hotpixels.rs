@@ -101,6 +101,102 @@ pub unsafe extern "C" fn darkroom_hotpixels_bayer(
     fixed
 }
 
+/// Multi-plane monochrome hot-pixel correction.
+///
+/// Same algorithm as the Bayer variant but neighbours are at offset ±1 (not
+/// ±2) — there's no Bayer-colour aliasing for a monochrome sensor — and the
+/// pixel itself spans `planes` channels. When a pixel is identified as hot,
+/// every channel of that pixel gets the same replacement maximum, and the
+/// mark-fixed overlay stamps the original value into the same row at
+/// column offsets ±1..±10 (step 1).
+///
+/// Note the subtle stride: the C source iterates by `planes` per pixel,
+/// reading neighbour offsets as `-planes`, `+planes`, `-planes*width`,
+/// `+planes*width` — i.e. the neighbour is the next pixel of the same
+/// channel. The mark-fixed branch uses an offset `4*i + c` (hard-coded 4
+/// despite `planes` possibly differing) — we mirror that quirk exactly.
+///
+/// Matches _process_monochrome() in src/iop/hotpixels.c.
+#[no_mangle]
+pub unsafe extern "C" fn darkroom_hotpixels_monochrome(
+    in_buf: *const f32,
+    out_buf: *mut f32,
+    width: usize,
+    height: usize,
+    planes: usize,
+    threshold: f32,
+    multiplier: f32,
+    min_neighbours: i32,
+    mark_fixed: i32,
+) -> i32 {
+    if width < 3 || height < 3 || planes == 0 {
+        return 0;
+    }
+    let mark_fixed = mark_fixed != 0;
+    let n = width * height * planes;
+    let input = std::slice::from_raw_parts(in_buf, n);
+    let output = std::slice::from_raw_parts_mut(out_buf, n);
+    let mut fixed: i32 = 0;
+
+    for row in 1..(height - 1) {
+        for col in 1..(width - 1) {
+            // Index of the current pixel's first channel.
+            let k = (row * width + col) * planes;
+            let v = input[k];
+            if v <= threshold { continue; }
+
+            let mid = v * multiplier;
+            let mut count = 0;
+            let mut maxin = 0.0_f32;
+
+            // four 4-neighbour offsets, same channel
+            let offsets = [-(planes as isize), -((planes * width) as isize),
+                           planes as isize, (planes * width) as isize];
+            for &off in &offsets {
+                let other = input[(k as isize + off) as usize];
+                if mid > other {
+                    count += 1;
+                    if other > maxin { maxin = other; }
+                }
+            }
+
+            if count >= min_neighbours {
+                for c in 0..planes {
+                    output[k + c] = maxin;
+                }
+                fixed += 1;
+
+                if mark_fixed {
+                    // Same-row stamps: i ∈ [-10..-1] then [1..10], hard-coded
+                    // stride 4 (matches the C source verbatim — see notes above).
+                    let mut i: isize = -1;
+                    while i >= -10 && (col as isize + i) >= 0 {
+                        let base = (k as isize + 4 * i) as usize;
+                        if base + planes <= n {
+                            for c in 0..planes {
+                                output[base + c] = v;
+                            }
+                        }
+                        i -= 1;
+                    }
+                    let mut i: isize = 1;
+                    while i <= 10 && (col as isize + i) < width as isize {
+                        let base = (k as isize + 4 * i) as usize;
+                        if base + planes <= n {
+                            for c in 0..planes {
+                                output[base + c] = v;
+                            }
+                        }
+                        i += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    fixed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -229,6 +325,62 @@ mod tests {
             assert!((output[idx] - 10.0).abs() < 1e-6,
                     "marker missing at offset {off}: got {}", output[idx]);
         }
+    }
+
+    #[test]
+    fn monochrome_isolated_hot_pixel_gets_replaced() {
+        // 4-channel monochrome buffer, 8x8.
+        let w = 8; let h = 8; let p = 4;
+        let mut input = vec![0.1_f32; w * h * p];
+        let k = (4 * w + 4) * p;
+        for c in 0..p { input[k + c] = 10.0; }
+        let mut output = input.clone();
+        let n = unsafe {
+            darkroom_hotpixels_monochrome(
+                input.as_ptr(), output.as_mut_ptr(),
+                w, h, p, 1.0, 0.5, 4, 0,
+            )
+        };
+        assert_eq!(n, 1);
+        // Replacement = max of 4 same-channel neighbours = 0.1
+        for c in 0..p {
+            assert!((output[k + c] - 0.1).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn monochrome_neighbour_offset_uses_planes_stride() {
+        // With planes=2, neighbours are at ±2 and ±2*width — confirm we look at
+        // the right pixel, not the next channel of the same pixel.
+        let w = 8; let h = 8; let p = 2;
+        let mut input = vec![0.1_f32; w * h * p];
+        let k = (4 * w + 4) * p;
+        input[k] = 10.0;     // hot pixel channel 0
+        input[k + 1] = 10.0; // hot pixel channel 1
+        let mut output = input.clone();
+        let n = unsafe {
+            darkroom_hotpixels_monochrome(
+                input.as_ptr(), output.as_mut_ptr(),
+                w, h, p, 1.0, 0.5, 4, 0,
+            )
+        };
+        assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn monochrome_border_pixels_are_skipped() {
+        let w = 8; let h = 8; let p = 1;
+        let mut input = vec![0.1_f32; w * h * p];
+        input[0] = 100.0; // top-left border
+        let mut output = input.clone();
+        let n = unsafe {
+            darkroom_hotpixels_monochrome(
+                input.as_ptr(), output.as_mut_ptr(),
+                w, h, p, 1.0, 0.5, 4, 0,
+            )
+        };
+        assert_eq!(n, 0);
+        assert_eq!(output[0], 100.0);
     }
 
     #[test]
