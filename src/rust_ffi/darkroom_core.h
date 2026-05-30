@@ -1175,6 +1175,29 @@ void darkroom_colortransfer_apply_l_histogram(const float *in_buf,
                                               size_t histn);
 
 /*
+ * Cacorrectrgb IOP — per-pixel manifold normalisation.
+ * For each pixel k (with confidence weight stored in the alpha channel):
+ *   weighth = max(higher[k*4+3], 1e-2)
+ *   weightl = max(lower[k*4+3],  1e-2)
+ *   higher[k*4+guide] /= weighth ; lower[k*4+guide] /= weightl
+ *   for the two non-guide channels c:
+ *     higher[k*4+c] = exp2(higher[k*4+c] / weighth) * higher[k*4+guide]
+ *     lower[k*4+c]  = exp2(lower[k*4+c]  / weightl) * lower[k*4+guide]
+ *   if weighth < 0.05: smooth blend higher → blurred_in by (1 - w)
+ *   if weightl < 0.05: smooth blend lower  → blurred_in by (1 - w)
+ * `guide` is the guide channel index (0=R, 1=G, 2=B); values >= 3 are a
+ * wiring bug and the function returns without touching the buffers.
+ * Matches normalize_manifolds() in src/iop/cacorrectrgb.c.
+ */
+void darkroom_cacorrectrgb_normalize_manifolds(
+    const float *blurred_in,
+    float *blurred_manifold_lower,
+    float *blurred_manifold_higher,
+    size_t width,
+    size_t height,
+    unsigned int guide);
+
+/*
  * CLAHE (Contrast-Limited Adaptive Histogram Equalisation).
  * Two-pass algorithm: builds a per-pixel luminance map = (max(RGB)+min(RGB))/2,
  * then for each row maintains a sliding (2*rad+1)^2 histogram of luminance

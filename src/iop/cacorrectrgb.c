@@ -20,6 +20,7 @@
 
 #include "bauhaus/bauhaus.h"
 #include "develop/imageop.h"
+#include "rust_ffi/darkroom_core.h"
 #include "develop/imageop_gui.h"
 #include "gui/color_picker_proxy.h"
 #include "gui/gtk.h"
@@ -198,53 +199,11 @@ static void normalize_manifolds(const float *const restrict blurred_in,
                                 const size_t height,
                                 const dt_iop_cacorrectrgb_guide_channel_t guide)
 {
-  DT_OMP_FOR()
-  for(size_t k = 0; k < width * height; k++)
-  {
-    const float weighth = fmaxf(blurred_manifold_higher[k * 4 + 3], 1E-2f);
-    const float weightl = fmaxf(blurred_manifold_lower[k * 4 + 3], 1E-2f);
-
-    // normalize guide
-    const float highg = blurred_manifold_higher[k * 4 + guide] / weighth;
-    const float lowg = blurred_manifold_lower[k * 4 + guide] / weightl;
-
-    blurred_manifold_higher[k * 4 + guide] = highg;
-    blurred_manifold_lower[k * 4 + guide] = lowg;
-
-    // normalize and unlog other channels
-    for(size_t kc = 0; kc <= 1; kc++)
-    {
-      const size_t c = (kc + guide + 1) % 3;
-      const float highc = blurred_manifold_higher[k * 4 + c] / weighth;
-      const float lowc = blurred_manifold_lower[k * 4 + c] / weightl;
-      blurred_manifold_higher[k * 4 + c] = exp2f(highc) * highg;
-      blurred_manifold_lower[k * 4 + c] = exp2f(lowc) * lowg;
-    }
-
-    // replace by average if weight is too small
-    if(weighth < 0.05f)
-    {
-      // we make a smooth transition between full manifold at
-      // weighth = 0.05f to full average at weighth = 0.01f
-      const float w = (weighth - 0.01f) / (0.05f - 0.01f);
-      for_each_channel(c,aligned(blurred_manifold_higher,blurred_in))
-      {
-        blurred_manifold_higher[k * 4 + c] = w * blurred_manifold_higher[k * 4 + c]
-                                           + (1.0f - w) * blurred_in[k * 4 + c];
-      }
-    }
-    if(weightl < 0.05f)
-    {
-      // we make a smooth transition between full manifold at
-      // weightl = 0.05f to full average at weightl = 0.01f
-      const float w = (weightl - 0.01f) / (0.05f - 0.01f);
-      for_each_channel(c,aligned(blurred_manifold_lower,blurred_in))
-      {
-        blurred_manifold_lower[k * 4 + c] = w * blurred_manifold_lower[k * 4 + c]
-                                          + (1.0f - w) * blurred_in[k * 4 + c];
-      }
-    }
-  }
+  darkroom_cacorrectrgb_normalize_manifolds(blurred_in,
+                                            blurred_manifold_lower,
+                                            blurred_manifold_higher,
+                                            width, height,
+                                            (unsigned int)guide);
 }
 
 #define DT_CACORRECTRGB_MAX_EV_DIFF 2.0f

@@ -61,6 +61,7 @@ pub mod colorchecker;
 pub mod rasterfile;
 pub mod diffuse;
 pub mod colortransfer;
+pub mod cacorrectrgb;
 
 use crate::{params::IopParams, roi::RoiIn, Result};
 
