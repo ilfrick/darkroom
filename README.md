@@ -120,7 +120,7 @@ cmake --build build --parallel $(nproc)
 cmake --install build
 ```
 
-Run: `/opt/darkroom/bin/darktable`
+Run: `/opt/darkroom/bin/darktable` (the binary keeps the upstream name internally; the Docker autostart script symlinks it to `/usr/local/bin/darkroom`)
 
 ---
 
