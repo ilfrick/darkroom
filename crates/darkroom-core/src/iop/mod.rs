@@ -62,6 +62,7 @@ pub mod rasterfile;
 pub mod diffuse;
 pub mod colortransfer;
 pub mod cacorrectrgb;
+pub mod rawdenoise;
 
 use crate::{params::IopParams, roi::RoiIn, Result};
 

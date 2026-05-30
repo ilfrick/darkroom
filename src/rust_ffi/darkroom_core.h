@@ -1254,6 +1254,49 @@ void darkroom_cacorrectrgb_blend_artifacts(
     float safety);
 
 /*
+ * Rawdenoise IOP — Bayer collect: gather one Bayer channel into a
+ * half-size monochrome buffer applying the sqrt variance-stabilising
+ * transform. `c` selects the channel (0=R, 1=G1, 2=G2, 3=B).
+ * `halfwidth` must equal (width - ((c&2)>>1) + 1) / 2 (the C formula).
+ * Matches the first DT_OMP_FOR in wavelet_denoise() (rawdenoise.c:221).
+ */
+void darkroom_rawdenoise_bayer_collect(
+    const float *in_buf, float *fimg_buf,
+    size_t width, size_t height, size_t halfwidth, unsigned int c);
+
+/*
+ * Rawdenoise IOP — Bayer scatter: distribute denoised Bayer channel back,
+ * squaring to invert the sqrt transform.
+ * Same halfwidth constraint as bayer_collect.
+ * Matches the second DT_OMP_FOR in wavelet_denoise() (rawdenoise.c:237).
+ */
+void darkroom_rawdenoise_bayer_scatter(
+    const float *fimg_buf, float *out_buf,
+    size_t width, size_t height, size_t halfwidth, unsigned int c);
+
+/*
+ * Rawdenoise IOP — X-Trans collect: nearest-neighbour scatter of one CFA
+ * channel (c: 0=R,1=G,2=B) into a full-size buffer with vstransform.
+ * `xtrans` is a flat 36-byte 6x6 CFA pattern.
+ * The caller must pre-fill row 0 and row height-1 with 0.5 before calling.
+ * Matches the DT_OMP_FOR(num_threads) in wavelet_denoise_xtrans() (:339).
+ */
+void darkroom_rawdenoise_xtrans_collect(
+    const float *in_buf, float *fimg_buf,
+    size_t width, size_t height,
+    const unsigned char *xtrans, unsigned int c);
+
+/*
+ * Rawdenoise IOP — X-Trans scatter: write denoised CFA channel back,
+ * squaring to invert vstransform.
+ * Matches the DT_OMP_FOR in wavelet_denoise_xtrans() (:454).
+ */
+void darkroom_rawdenoise_xtrans_scatter(
+    const float *fimg_buf, float *out_buf,
+    size_t width, size_t height,
+    const unsigned char *xtrans, unsigned int c);
+
+/*
  * CLAHE (Contrast-Limited Adaptive Histogram Equalisation).
  * Two-pass algorithm: builds a per-pixel luminance map = (max(RGB)+min(RGB))/2,
  * then for each row maintains a sliding (2*rad+1)^2 histogram of luminance
