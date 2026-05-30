@@ -197,6 +197,133 @@ pub unsafe extern "C" fn darkroom_hotpixels_monochrome(
     fixed
 }
 
+/// Pre-compute the per-cell same-colour neighbour offset table for an X-Trans
+/// 6x6 CFA pattern.
+///
+/// Mirrors the loop at the top of `_process_xtrans()` in src/iop/hotpixels.c.
+/// For each (j, i) in [0..6)x[0..6), walks a 20-entry search ring and records
+/// the (dx, dy) of the first 4 neighbours whose CFA colour matches the centre.
+fn xtrans_neighbour_offsets(xtrans: &[[u8; 6]; 6]) -> [[[(i32, i32); 4]; 6]; 6] {
+    const SEARCH: [(i32, i32); 20] = [
+        (-1,  0), (1,  0), (0, -1), (0, 1),
+        (-1, -1), (-1, 1), (1, -1), (1, 1),
+        (-2,  0), (2,  0), (0, -2), (0, 2),
+        (-2, -1), (-2, 1), (2, -1), (2, 1),
+        (-1, -2), (1, -2), (-1, 2), (1, 2),
+    ];
+    let mut out = [[[(0_i32, 0_i32); 4]; 6]; 6];
+    for j in 0..6 {
+        for i in 0..6 {
+            let c = crate::raw::fc_xtrans(j as i32, i as i32, xtrans);
+            let mut found = 0;
+            for s in 0..20 {
+                if found == 4 { break; }
+                let (dx, dy) = SEARCH[s];
+                let cn = crate::raw::fc_xtrans(j as i32 + dy, i as i32 + dx, xtrans);
+                if cn == c {
+                    out[j][i][found] = (dx, dy);
+                    found += 1;
+                }
+            }
+        }
+    }
+    out
+}
+
+/// X-Trans-sensor hot-pixel correction.
+///
+/// Mirrors `_process_xtrans()` in src/iop/hotpixels.c. For every interior
+/// pixel (row, col) in 2..h-2 x 2..w-2:
+///   * If `input[k] > threshold`, examine the 4 pre-computed same-colour
+///     neighbours of (row%6, col%6).
+///   * Let mid = `input[k] * multiplier`. Count how many neighbours
+///     satisfy mid > neighbour and track their max.
+///   * If `count >= min_neighbours`, replace `output[k]` with that max.
+///
+/// When `mark_fixed` is set, stamps the original value at column offsets
+/// +/-2..+/-10 where the X-Trans CFA colour at (row, col+i) matches the
+/// centre — same as the C source, NOT every position.
+///
+/// Returns the count of pixels replaced.
+#[no_mangle]
+pub unsafe extern "C" fn darkroom_hotpixels_xtrans(
+    in_buf: *const f32,
+    out_buf: *mut f32,
+    width: usize,
+    height: usize,
+    xtrans: *const u8, // flat 36-byte 6x6
+    threshold: f32,
+    multiplier: f32,
+    min_neighbours: i32,
+    mark_fixed: i32,
+) -> i32 {
+    if width < 5 || height < 5 { return 0; }
+    let mark_fixed = mark_fixed != 0;
+    let n = width * height;
+    let input = std::slice::from_raw_parts(in_buf, n);
+    let output = std::slice::from_raw_parts_mut(out_buf, n);
+
+    // Lift the 36-byte buffer into a 6x6 array for cheap lookups.
+    let xt_bytes = std::slice::from_raw_parts(xtrans, 36);
+    let mut xt = [[0_u8; 6]; 6];
+    for r in 0..6 {
+        for c in 0..6 { xt[r][c] = xt_bytes[r * 6 + c]; }
+    }
+
+    let offsets = xtrans_neighbour_offsets(&xt);
+    let w_i = width as isize;
+    let mut fixed: i32 = 0;
+
+    for row in 2..(height - 2) {
+        for col in 2..(width - 2) {
+            let k = row * width + col;
+            let v = input[k];
+            if v <= threshold { continue; }
+            let mid = v * multiplier;
+
+            let mut count = 0;
+            let mut maxin = 0.0_f32;
+            let cell = &offsets[row % 6][col % 6];
+            for &(dx, dy) in cell {
+                let off = dx as isize + dy as isize * w_i;
+                let other = input[(k as isize + off) as usize];
+                if mid > other {
+                    count += 1;
+                    if other > maxin { maxin = other; }
+                }
+            }
+
+            if count >= min_neighbours {
+                output[k] = maxin;
+                fixed += 1;
+
+                if mark_fixed {
+                    let c = crate::raw::fc_xtrans(row as i32, col as i32, &xt);
+                    // Same-row stamps at offsets -10..-2 step -1 (C source uses -1 step)
+                    let mut i: isize = -2;
+                    while i >= -10 && (col as isize + i) >= 0 {
+                        let cc = crate::raw::fc_xtrans(row as i32, (col as i32) + i as i32, &xt);
+                        if cc == c {
+                            output[(k as isize + i) as usize] = v;
+                        }
+                        i -= 1;
+                    }
+                    let mut i: isize = 2;
+                    while i <= 10 && (col as isize + i) < width as isize {
+                        let cc = crate::raw::fc_xtrans(row as i32, (col as i32) + i as i32, &xt);
+                        if cc == c {
+                            output[(k as isize + i) as usize] = v;
+                        }
+                        i += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    fixed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -381,6 +508,88 @@ mod tests {
         };
         assert_eq!(n, 0);
         assert_eq!(output[0], 100.0);
+    }
+
+    /// A canonical Fujifilm X-Trans pattern. 0=R, 1=G, 2=B.
+    const XTRANS_FUJI: [[u8; 6]; 6] = [
+        [1, 2, 1, 1, 0, 1],
+        [0, 1, 0, 2, 1, 2],
+        [1, 2, 1, 1, 0, 1],
+        [1, 0, 1, 1, 2, 1],
+        [2, 1, 2, 0, 1, 0],
+        [1, 0, 1, 1, 2, 1],
+    ];
+
+    #[test]
+    fn xtrans_offsets_always_finds_four_neighbours() {
+        let offs = xtrans_neighbour_offsets(&XTRANS_FUJI);
+        for j in 0..6 {
+            for i in 0..6 {
+                // Every cell must have 4 non-zero (dx, dy) entries (we recorded
+                // only matches; zero-zero would be the centre itself, which is
+                // never in the search ring).
+                let cell = &offs[j][i];
+                for n in 0..4 {
+                    assert!(cell[n] != (0, 0), "cell ({j},{i}) entry {n} is (0,0)");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn xtrans_offsets_neighbours_have_same_colour() {
+        let offs = xtrans_neighbour_offsets(&XTRANS_FUJI);
+        for j in 0..6 {
+            for i in 0..6 {
+                let centre = crate::raw::fc_xtrans(j as i32, i as i32, &XTRANS_FUJI);
+                for n in 0..4 {
+                    let (dx, dy) = offs[j][i][n];
+                    let nb = crate::raw::fc_xtrans(j as i32 + dy, i as i32 + dx, &XTRANS_FUJI);
+                    assert_eq!(nb, centre, "({j},{i}) neighbour {n} colour differs");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn xtrans_isolated_hot_pixel_gets_replaced() {
+        let w = 16; let h = 16;
+        let mut input = vec![0.1_f32; w * h];
+        // Pick a pixel well inside the loop range
+        let row = 8;
+        let col = 8;
+        input[row * w + col] = 10.0;
+        let mut output = input.clone();
+        let xt_flat: Vec<u8> = XTRANS_FUJI.iter().flatten().copied().collect();
+        let n = unsafe {
+            darkroom_hotpixels_xtrans(
+                input.as_ptr(), output.as_mut_ptr(),
+                w, h,
+                xt_flat.as_ptr(),
+                1.0, 0.5, 4, 0,
+            )
+        };
+        assert_eq!(n, 1, "expected exactly one fix");
+        // Replacement should be 0.1 (the max of the same-colour neighbours).
+        assert!((output[row * w + col] - 0.1).abs() < 1e-6);
+    }
+
+    #[test]
+    fn xtrans_below_threshold_no_op() {
+        let w = 16; let h = 16;
+        let input = vec![0.1_f32; w * h];
+        let mut output = input.clone();
+        let xt_flat: Vec<u8> = XTRANS_FUJI.iter().flatten().copied().collect();
+        let n = unsafe {
+            darkroom_hotpixels_xtrans(
+                input.as_ptr(), output.as_mut_ptr(),
+                w, h,
+                xt_flat.as_ptr(),
+                1.0, 0.5, 4, 0,
+            )
+        };
+        assert_eq!(n, 0);
+        assert_eq!(output, input);
     }
 
     #[test]

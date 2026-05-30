@@ -1062,6 +1062,25 @@ int darkroom_hotpixels_monochrome(const float *in_buf,
                                   int mark_fixed);
 
 /*
+ * Hotpixels IOP — X-Trans variant.
+ * For each (row, col) in 2..h-2 x 2..w-2, examines the 4 pre-computed same-
+ * colour neighbours in the 6x6 X-Trans CFA. `xtrans` is a flat 36-byte 6x6
+ * pattern. The mark_fixed overlay stamps same-row pixels at column offsets
+ * +/-2..+/-10 where the CFA colour matches the centre. Returns the count
+ * of pixels replaced.
+ * Matches _process_xtrans() in src/iop/hotpixels.c.
+ */
+int darkroom_hotpixels_xtrans(const float *in_buf,
+                              float *out_buf,
+                              size_t width,
+                              size_t height,
+                              const unsigned char *xtrans,
+                              float threshold,
+                              float multiplier,
+                              int min_neighbours,
+                              int mark_fixed);
+
+/*
  * CLAHE (Contrast-Limited Adaptive Histogram Equalisation).
  * Two-pass algorithm: builds a per-pixel luminance map = (max(RGB)+min(RGB))/2,
  * then for each row maintains a sliding (2*rad+1)^2 histogram of luminance
