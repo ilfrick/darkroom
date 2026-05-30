@@ -29,6 +29,7 @@
 #include "develop/tiling.h"
 #include "develop/develop.h"
 #include "develop/imageop.h"
+#include "rust_ffi/darkroom_core.h"
 #include "develop/imageop_gui.h"
 #include "develop/imageop_math.h"
 #include "common/interpolation.h"
@@ -565,26 +566,15 @@ void process(dt_iop_module_t *self,
     pipe->mask_display = DT_DEV_PIXELPIPE_DISPLAY_PASSTHRU;
     if(ch == 1)
     {
-      // simple blur to remove CFA colors:
+      // simple blur to remove CFA colors before delegating to the Rust overlay.
       dt_box_mean(out, roi_out->height, roi_out->width, 1, 3, 2);
-      DT_OMP_FOR()
-      for(size_t k = 0; k < (size_t)roi_out->width * roi_out->height; k++)
-        out[k] =
-          0.2f
-          * CLAMPF(sqrtf(out[k]), 0.0f, 0.5f)
-          + (mask ? mask[k] : 0.0f);
+      darkroom_rasterfile_visual_single(out, mask,
+                                        (size_t)roi_out->width * roi_out->height);
     }
     else
     {
-      DT_OMP_FOR()
-      for(size_t k = 0; k < (size_t)roi_out->width * roi_out->height; k++)
-      {
-        const float val =
-          0.2f
-          * CLAMPF(sqrtf(0.33f * (out[4*k] + out[4*k+1]+ out[4*k+2])), 0.0f, 0.5f)
-          + (mask ? mask[k] : 0.0f);
-        for_three_channels(m) out[4*k+m] = val;
-      }
+      darkroom_rasterfile_visual_rgba(out, mask,
+                                      (size_t)roi_out->width * roi_out->height);
     }
   }
 

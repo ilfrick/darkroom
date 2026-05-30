@@ -1118,6 +1118,27 @@ void darkroom_colorchecker_process(const float *in_buf,
                                    const float *polynomial_b);
 
 /*
+ * Rasterfile IOP — single-plane visualisation overlay.
+ *   out[k] = 0.2 * clamp(sqrt(out[k]), 0, 0.5) + (mask[k] if mask else 0.0)
+ * `out_buf` is read-modified. `mask` may be NULL.
+ * Matches the `ch == 1` branch of process() in src/iop/rasterfile.c.
+ */
+void darkroom_rasterfile_visual_single(float *out_buf,
+                                       const float *mask,
+                                       size_t npixels);
+
+/*
+ * Rasterfile IOP — RGBA visualisation overlay (grey-collapse).
+ * For each pixel:
+ *   val = 0.2 * clamp(sqrt(0.33*(R+G+B)), 0, 0.5) + mask[k]
+ *   R, G, B := val      (alpha untouched)
+ * Matches the `ch != 1` branch of process() in src/iop/rasterfile.c.
+ */
+void darkroom_rasterfile_visual_rgba(float *out_buf,
+                                     const float *mask,
+                                     size_t npixels);
+
+/*
  * CLAHE (Contrast-Limited Adaptive Histogram Equalisation).
  * Two-pass algorithm: builds a per-pixel luminance map = (max(RGB)+min(RGB))/2,
  * then for each row maintains a sliding (2*rad+1)^2 histogram of luminance
