@@ -9,6 +9,61 @@ runnable throughout.
 
 ---
 
+## Current status — 2026-05-30
+
+**Phase 0 — Infrastructure**: complete. The Cargo workspace is live with
+five crates and the cross-stage Docker dev image (`darkroom-rust-dev`) is
+used for every `cargo check` / `cargo test` invocation.
+
+**Phase 1 — Image pipeline**: in progress. 56 IOPs registered in Rust
+(`crates/darkroom-core/src/iop`), 253 unit tests passing. Shared
+infrastructure modules in `darkroom-core` (color, math, raw) have been
+added as IOP migrations needed them. Each IOP migration is committed as
+its own `Phase 2z+N` patch on top of the workspace.
+
+**Phase 2 — Database**: not yet started. The crate skeleton
+(`crates/darkroom-db`) exists with `tags.rs`, `image.rs`, `collection.rs`
+placeholder files but no migrated logic.
+
+**Phase 3 — GTK4 UI shell**: bootstrapped. `crates/darkroom-ui` now
+depends on real `gtk4` 0.9 + `libadwaita` 0.7 and exposes
+`darkroom_ui::run()` which boots an `adw::Application` and presents a
+placeholder `ApplicationWindow`. The `darkroom-rs` binary (in
+`crates/darkroom`) calls into it and exits cleanly. Production launch
+still uses the C binary; the Rust binary is grown alongside it.
+
+**Operations & packaging**: out of the original plan, but real work this
+project has shipped — Docker entry-point persistence fixes
+(`docker/cont-init-darkroom.sh`, `docker/kasmvnc-autostart.sh`), the
+SIGTERM/SIGHUP signal handlers + 30 s periodic `dt_conf_save` in
+`src/gui/gtk.c` that survive `docker stop`, the `--no-as-needed`
+darkroom_core link + Rust-side SONAME so the loader resolves the
+shared library, and the `Dockerfile.rust-dev` build environment.
+
+### IOPs migrated so far (alphabetical)
+
+`agx`, `atrous`, `basecurve`, `basicadj`, `bloom`, `censorize`,
+`channelmixer`, `channelmixerrgb`, `clahe`, `colisa`, `colorbalance`,
+`colorchecker`, `colorcontrast`, `colorcorrection`, `colorin`,
+`colorize`, `colorout`, `colorzones`, `defringe`, `dither`, `exposure`,
+`filmic`, `globaltonemap`, `graduatednd`, `grain`, `hazeremoval`,
+`highlights`, `highpass`, `hotpixels`, `invert`, `levels`, `lowlight`,
+`lowpass`, `lut3d`, `monochrome`, `negadoctor`, `overexposed`,
+`overlay`, `primaries`, `profile_gamma`, `rasterfile`, `rawprepare`,
+`relight`, `rgbcurve`, `rgblevels`, `shadhi`, `sigmoid`, `soften`,
+`splittoning`, `temperature`, `tonecurve`, `velvia`, `vibrance`,
+`vignette`, `watermark`, `zonesystem`.
+
+### Shared darkroom-core modules
+
+| Module | Purpose | Consumers |
+|--------|---------|-----------|
+| `color` | RGB↔HSL, Lab↔XYZ↔ProPhoto, eval_exp, extrapolate_lut, apply_trc, get_rgb_matrix_luminance | overexposed, channelmixer, multi-IOP shared math |
+| `math` | fastlog2, fastlog (IEEE-754 bit-twiddled approximations) | colorchecker, future log/exp-heavy IOPs |
+| `raw` | fc_bayer, fc_xtrans, fcol (CFA primitives) | highlights, hotpixels X-Trans, future rawoverexposed / demosaic |
+
+---
+
 ## Goals
 
 - Memory safety (eliminate the entire class of C buffer-overflow/use-after-free bugs)
@@ -41,93 +96,100 @@ runnable throughout.
 
 ---
 
-## Phase 0 — Infrastructure (3–4 months)
+## Phase 0 — Infrastructure ✅ done
 
-**Goal:** Rust compiles alongside C; no user-visible change.
+### What landed
 
-### Tasks
-
-1. Add `Cargo.toml` workspace at repo root:
-   ```toml
-   [workspace]
-   members = [
-     "crates/darkroom-sys",   # auto-generated C bindings
-     "crates/darkroom-core",  # image pipeline
-     "crates/darkroom-db",    # collections / SQLite
-     "crates/darkroom-ui",    # GTK4 UI
-     "crates/darkroom",       # binary crate
-   ]
-   ```
-
-2. Create `crates/darkroom-sys`:
-   - `build.rs` runs `bindgen` on `src/common/darktable.h` and key public headers
-   - Also compiles the remaining C source via the `cc` crate as a static lib
-   - Exposes `unsafe extern "C"` wrappers for every public C symbol
-
-3. CI additions (`.github/workflows/rust.yml`):
-   - `cargo check`, `cargo clippy -- -D warnings`, `cargo test`
-   - Run alongside the existing CMake Docker build
-
-4. Add `rust-toolchain.toml` pinning stable toolchain channel.
+- Cargo workspace at the repo root with five members:
+  ```
+  crates/darkroom-sys   # auto-generated C bindings
+  crates/darkroom-core  # image pipeline + shared math/colour/raw helpers
+  crates/darkroom-db    # collections / SQLite (skeleton only)
+  crates/darkroom-ui    # GTK4 UI shell (boots a window today)
+  crates/darkroom       # binary crate (darkroom-rs)
+  ```
+- `darkroom-sys/build.rs` generates bindings for the public C symbols the
+  Rust side currently needs (`dt_imgid_t`, `NO_IMGID`, the `dt_iop_*`
+  parameter accessors used by FFI shims).
+- The build is driven from `src/CMakeLists.txt` via `find_program(CARGO …)`;
+  Cargo is invoked with `CARGO_TARGET_DIR=build/cargo-target` so all build
+  artefacts live under `build/`. RUSTFLAGS sets `-soname=libdarkroom_core.so`
+  and `lib_darktable` carries `-Wl,--no-as-needed` so the dynamic loader
+  resolves Rust symbols from the C plugins.
+- `docker/Dockerfile.rust-dev` provides a persistent Rust + GTK4 +
+  libadwaita build environment. `cargo check --workspace` and
+  `cargo test --workspace` are run inside it from CI and from local
+  development.
 
 ### Verification
 
 ```bash
-cargo check --workspace
-cargo test --workspace           # only darkroom-sys smoke tests at this stage
+docker build -t darkroom-rust-dev -f docker/Dockerfile.rust-dev .
+docker run --rm -v "$PWD:/src" -w /src darkroom-rust-dev cargo check --workspace
+docker run --rm -v "$PWD:/src" -w /src darkroom-rust-dev cargo test --workspace --release
 ```
-
-### Anti-patterns
-
-- Do not write any Rust business logic in Phase 0
-- Do not remove any C files
 
 ---
 
-## Phase 1 — Image pipeline (6–9 months)
+## Phase 1 — Image pipeline (in progress)
 
-**Goal:** All IOP modules run as safe Rust; C orchestrator calls them via FFI.
+**Goal:** Every IOP `process()` runs as safe Rust; the C pixelpipe calls
+into Rust through a stable `extern "C"` FFI surface (`src/rust_ffi/darkroom_core.h`).
 
-### Design
+### Working model
 
-Define a `trait IopProcess` in `crates/darkroom-core`:
+Each migration is shipped as one self-contained patch named
+`Phase 2<letter>` or `Phase 2z+<N>`. The contract is:
 
-```rust
-pub trait IopProcess: Send + Sync {
-    fn process(&self, input: &[f32], output: &mut [f32], params: &IopParams, roi: &RoiIn);
-    fn process_cl(&self, dev_buf: &mut ClBuffer, params: &IopParams) -> Result<()>;
-}
-```
+1. Write `crates/darkroom-core/src/iop/<name>.rs` with a `#[no_mangle]`
+   `extern "C"` entry point and inline unit tests.
+2. Register the module in `crates/darkroom-core/src/iop/mod.rs`.
+3. Declare the function in `src/rust_ffi/darkroom_core.h`.
+4. Replace the corresponding `DT_OMP_FOR` body in `src/iop/<name>.c`
+   with a call into the Rust function.
+5. Add the `.rs` file to the `DEPENDS` of the `darkroom_core_rust`
+   custom target in `src/CMakeLists.txt`.
+6. Commit + push to both `origin` (GitHub) and `gitea`.
 
-Each IOP becomes a `struct` in `darkroom-core/src/iop/<name>.rs` implementing
-this trait. The C pixelpipe calls into Rust through a thin `extern "C"` wrapper
-generated by `cbindgen`.
+### Progress summary
 
-### Migration order (start with pure-math, no pixel-format edge cases)
+| | Count |
+|---|---|
+| IOPs migrated | 56 / 93 |
+| Rust unit tests | 253 |
+| Shared support modules | `color`, `math`, `raw` |
 
-| Priority | IOP | Notes |
-|----------|-----|-------|
-| 1 | `exposure` | trivial multiply |
-| 2 | `contrast_brightness_saturation` | trivial |
-| 3 | `sharpen` | convolution, good test for SIMD |
-| 4 | `colorbalance` | matrix math |
-| 5 | `tonecurve` | LUT interpolation |
-| 6 | `levels` | LUT |
-| 7 | `colorin` / `colorout` | LittleCMS via `lcms2` crate |
-| 8 | `demosaic` | most complex; do last in this phase |
-| ... | remaining ~80 IOPs | continue in parallel |
+The C plugins that currently survive untouched fall into three buckets:
+
+| Bucket | Examples | Reason for not migrating yet |
+|--------|----------|------------------------------|
+| Cold-path geometric distort_* | `borders`, `crop`, `flip`, `enlargecanvas`, `scalepixels`, `rotatepixels` | Each only has `distort_transform`/`distort_backtransform` loops that shift a coord buffer by a constant; migrating moves a memcpy from C to Rust with negligible benefit. |
+| Multi-pass algorithm with heavy infrastructure | `sharpen` (per-thread Gaussian kernel), `demosaic` (Bayer/X-Trans interpolation kernels), `colormapping` (k-means + bilateral), `cacorrect` (tiled CA correction), `colorbalancergb` (Filmlight Yrg/Ych + JzAzBz), `colorequal`, `ashift` | Bodies depend on substantial shared infrastructure (Gaussian, bilateral grid, k-means, cluster lookup, JzAzBz space, …) that must be ported first. |
+| Heavy colour-profile dependencies | `colorharmonizer`, `colortransfer`, parts of `rawoverexposed` | Need `dt_dev_distort_backtransform_plus`, `dt_ioppr_rgb_matrix_to_dt_UCS_JCH`, or LCMS-bound transforms; future work once `colorspaces.c` is in Rust. |
 
 ### Verification per IOP
 
-- Unit test: run old C vs new Rust on the same input buffer, assert max pixel delta < 0.001
-- Integration: process a reference RAW through the full pipeline; compare output TIFF hash
+- Per-function Rust unit tests with the same exact arithmetic as the C
+  side (constants and bit patterns copied verbatim).
+- The Rust crate is linked into `libdarktable.so` via `-Wl,--no-as-needed`
+  so every IOP plugin resolves its `darkroom_*` symbols at startup; the
+  Docker container regression-test on real photos is the integration
+  signal.
+
+### Anti-patterns
+
+- No `unsafe` calls outside the FFI shim. The FFI layer reconstructs
+  borrows from raw pointers, then the rest of the function is safe Rust.
+- No silent numeric drift. When a C function uses a bit-twiddled
+  approximation (`fastlog2`, `dt_fast_expf`), the Rust port copies the
+  same magic constants and bit masks.
 
 ---
 
-## Phase 2 — Database and collections (2–3 months)
+## Phase 2 — Database and collections (not yet started)
 
-**Goal:** All SQLite queries go through `rusqlite`-based Rust; C uses the same
-structs through `#[repr(C)]` FFI.
+**Goal:** All SQLite queries go through `rusqlite`-based Rust; C uses the
+same structs through `#[repr(C)]` FFI.
 
 ### Files to replace
 
@@ -162,23 +224,38 @@ impl Collection {
 }
 ```
 
-### Verification
+### Order of attack
 
-- All existing SQLite-based tests pass unchanged
-- `cargo test -p darkroom-db` covers query correctness
+1. `tags` (smallest, well-isolated SQL surface) — proves the FFI pattern.
+2. `metadata` (key/value writes by image ID).
+3. `film` (top-level container; thin DAO).
+4. `collection` (collect rules query builder — biggest jump in complexity).
+5. `image` (image rows; deepest coupling, do last).
+6. `history` (per-image edit history; touches the IOP pipeline too).
+
+Each lands as a `Phase 2-db-N` patch following the same contract as the
+IOP migrations: Rust struct + extern "C" trampoline + thin C wrapper.
 
 ---
 
-## Phase 3 — UI shell: GTK4 + gtk4-rs (6–12 months)
+## Phase 3 — UI shell: GTK4 + gtk4-rs (bootstrapped)
 
-**Goal:** The entire GTK3 UI is replaced with GTK4 + `gtk4-rs`. This is the
-highest-risk phase and will take the longest.
+**Goal:** The entire GTK3 UI is replaced with GTK4 + `gtk4-rs`. Highest-risk
+phase, longest expected duration.
 
-### Prerequisites
+### Current state
 
-- `gtk4-rs` 0.9+ (tracks GTK 4.x)
-- `libadwaita-rs` for standard widgets (HeaderBar, AboutDialog, PreferencesWindow)
-- Custom Cairo drawing via `gtk4::DrawingArea` + `cairo-rs`
+- `crates/darkroom-ui` depends on `gtk4 0.9` (`features = ["v4_12"]`)
+  and `libadwaita 0.7` (`features = ["v1_5"]`).
+- `darkroom_ui::run()` boots an `adw::Application` with
+  `application_id = "org.darkroom.Darkroom"` and presents a
+  1280×800 `ApplicationWindow` carrying a placeholder label.
+- `crates/darkroom/src/main.rs` (`darkroom-rs`) calls into
+  `darkroom_ui::run()` and forwards the exit code.
+- The production runtime still launches the C binary
+  (`/usr/local/bin/darkroom`). When the Rust UI reaches feature parity
+  with a given panel/view, the relevant C code is removed and the
+  autostart script switches to `darkroom-rs`.
 
 ### GTK3 → GTK4 migration notes
 
@@ -199,7 +276,7 @@ highest-risk phase and will take the longest.
 
 | Priority | View / panel | Notes |
 |----------|-------------|-------|
-| 1 | Application shell (`GtkApplicationWindow`) | skeleton only |
+| 1 | Application shell (`AdwApplicationWindow`) | done (placeholder) |
 | 2 | Lighttable thumbnail grid | `GtkGridView` + `GtkListItemFactory` |
 | 3 | Darkroom editing view | `GtkDrawingArea` + overlays |
 | 4 | Collections panel | `GtkListView` + `GtkTreeExpander` |
@@ -214,7 +291,8 @@ highest-risk phase and will take the longest.
 ```
 crates/darkroom-ui/
   src/
-    app.rs           # GtkApplication
+    lib.rs           # adw::Application boot (done)
+    app.rs           # global state, action map
     lighttable/
       mod.rs
       thumbnail.rs   # GtkListItemFactory impl
@@ -233,45 +311,79 @@ crates/darkroom-ui/
       about.rs
 ```
 
-### Verification per view
+### Production Dockerfile changes (deferred)
 
-- Screenshot regression tests using `gtk4-rs` test harness + `insta` crate for snapshot comparison
-- All keyboard shortcuts work (use `gtk4::ShortcutController`)
+The production Dockerfile (`docker/Dockerfile`) currently only installs
+GTK3 libraries — it builds and runs the C binary plus the Rust
+`libdarkroom_core.so`. Once the Rust UI is past the proof-of-concept
+stage, the production image gets a parallel update:
+
+1. Add `libgtk-4-dev libadwaita-1-dev` (+ a few transitive deps) to the
+   builder stage.
+2. Add `cargo build --release --workspace` after the CMake build and
+   install `target/release/darkroom-rs` into `/opt/darkroom/bin/`.
+3. Add `libgtk-4-1 libadwaita-1-0` to the runtime stage.
+4. Initially `docker exec darkroom darkroom-rs` lets users opt into the
+   Rust UI alongside the working C app.
+5. When the Rust UI reaches feature parity, flip the autostart script.
 
 ---
 
-## Phase 4 — Remove C entirely (3–6 months)
+## Phase 4 — Remove C entirely (future)
 
 **Goal:** Zero C source files remain; build is pure Cargo.
 
 ### Tasks
 
-1. Delete `CMakeLists.txt` and all `CMakeLists.txt` sub-files
-2. Move asset installation (`share/darktable/`) to `build.rs` or a custom Cargo
-   xtask (`cargo xtask install`)
-3. Delete `build.sh`
+1. Delete `CMakeLists.txt` and all `CMakeLists.txt` sub-files.
+2. Move asset installation (`share/darktable/`) to `build.rs` or a custom
+   Cargo xtask (`cargo xtask install`).
+3. Delete `build.sh`.
 4. Update Docker builder stage:
    ```dockerfile
    RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
    RUN cargo build --release && cargo install --path crates/darkroom
    ```
-5. Update CI: remove CMake job, keep Rust job
+5. Update CI: remove CMake job, keep Rust job.
+
+---
+
+## Operations & packaging (cross-cutting)
+
+Work outside the original phase model that has nonetheless shipped:
+
+- `docker/Dockerfile`: builder stage links Rust crate; runtime stage
+  install path documented; container entry-point hardened.
+- `docker/cont-init-darkroom.sh`: `/config/{darkroom,cache}`
+  created with `PUID:PGID` ownership and 0750 perms before the desktop
+  session runs.
+- `docker/kasmvnc-autostart.sh`: traps SIGTERM/SIGINT/SIGHUP and
+  forwards them to the running darkroom child, then waits up to ~15 s
+  for clean shutdown so `dt_conf_save` runs.
+- `src/gui/gtk.c`: `g_unix_signal_add` handler that calls
+  `dt_control_quit()` on signal delivery, plus a 30 s periodic
+  `g_timeout_add_seconds` that flushes `dt_conf` to disk as a
+  belt-and-braces measure against SIGKILL'd shutdowns.
+
+These fixes were prerequisites for the IOP migration cadence: without
+them every `docker stop` was wiping user settings, which would have
+made the per-phase verification cycle untenable.
 
 ---
 
 ## Effort and risk summary
 
-| Phase | Duration | Risk | Key dependencies |
-|-------|----------|------|-----------------|
-| 0 — Infrastructure | 3–4 mo | Low | `bindgen`, `cc` crate |
-| 1 — IOP pipeline | 6–9 mo | Medium | `lcms2`, `opencl3`, `rawspeed` C lib |
-| 2 — Database | 2–3 mo | Low | `rusqlite`, `r2d2` |
-| 3 — UI (GTK4) | 6–12 mo | High | `gtk4-rs` ≥ 0.9, `libadwaita-rs` |
-| 4 — Remove C | 3–6 mo | Medium | all prior phases complete |
-| **Total** | **20–34 mo** | | |
+| Phase | Status | Risk | Key dependencies |
+|-------|--------|------|-----------------|
+| 0 — Infrastructure | ✅ done | Low | `bindgen`, `cc` crate |
+| 1 — IOP pipeline | 56 / 93 IOPs migrated | Medium | `lcms2`, `opencl3`, `rawspeed` C lib |
+| 2 — Database | not started | Low | `rusqlite`, `r2d2` |
+| 3 — UI (GTK4) | bootstrapped | High | `gtk4-rs` ≥ 0.9, `libadwaita-rs` |
+| 4 — Remove C | future | Medium | all prior phases complete |
 
-Assumes 1–2 engineers working full-time. Running phases 1 and 2 in parallel
-after Phase 0 completes reduces wall-clock time to ~18–24 months.
+The remaining IOP migrations follow the same cadence as the recent
+`Phase 2z+N` patches. Phases 2 and 3 can proceed in parallel with the
+tail of Phase 1 since they touch disjoint subsystems.
 
 ---
 
@@ -279,17 +391,18 @@ after Phase 0 completes reduces wall-clock time to ~18–24 months.
 
 ```toml
 [dependencies]
-gtk4       = { version = "0.9", features = ["v4_12"] }
-libadwaita = { version = "0.7", features = ["v1_5"] }
-cairo-rs   = "0.20"
-gdk4       = "0.9"
-rusqlite   = { version = "0.32", features = ["bundled"] }
-lcms2      = "6"
-opencl3    = "0.9"
-mlua       = { version = "0.10", features = ["lua54", "vendored"] }
+gtk4       = { version = "0.9", features = ["v4_12"] }       # in use today
+libadwaita = { version = "0.7", features = ["v1_5"] }        # in use today
+glib       = "0.20"                                          # in use today
+rusqlite   = { version = "0.31", features = ["bundled"] }    # workspace dep, Phase 2 consumer
 rayon      = "1"
 anyhow     = "1"
 tracing    = "0.1"
+cairo-rs   = "0.20"   # arrives with Phase 3 (drawing area work)
+gdk4       = "0.9"    # arrives with Phase 3 (input controllers)
+lcms2      = "6"      # arrives when colorin/colorout migrate the LCMS calls
+opencl3    = "0.9"    # arrives when the OpenCL kernels move out of C
+mlua       = { version = "0.10", features = ["lua54", "vendored"] } # arrives when Lua scripting moves
 cbindgen   = "0.27"   # build-dep for generating C headers from Rust
 bindgen    = "0.70"   # build-dep for darkroom-sys
 ```
