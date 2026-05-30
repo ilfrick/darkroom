@@ -55,6 +55,7 @@ pub mod overexposed;
 pub mod hotpixels;
 pub mod clahe;
 pub mod rawprepare;
+pub mod highlights;
 
 use crate::{params::IopParams, roi::RoiIn, Result};
 

@@ -31,6 +31,7 @@
 #include "control/control.h"
 #include "develop/develop.h"
 #include "develop/imageop.h"
+#include "rust_ffi/darkroom_core.h"
 #include "develop/imageop_math.h"
 #include "develop/imageop_gui.h"
 #include "develop/noise_generator.h"
@@ -483,39 +484,21 @@ static float *_provide_raster_mask(const dt_iop_roi_t *const roi_in,
 
   if(filters == 0)  // sraw
   {
-    DT_OMP_FOR()
-    for(int row = 0; row < roi_out->height; row++)
-    {
-      for(int col = 0; col < roi_out->width; col++)
-      {
-        const size_t ox = (size_t)row * roi_out->width + col;
-        const size_t ix = ox * 4;
-        float mval = 0.0f;
-        for(int c = 0; c < 3; c++)
-        {
-          const float ref = MAX(0.5, 0.95f * clips[c]);
-          mval = MAX(mval, (in[ix+c] - ref) / ref);
-        }
-        tmp[ox] = MAX(0.0f, mval);
-      }
-    }
+    darkroom_highlights_mask_sraw(in, tmp,
+                                  (size_t)roi_out->width,
+                                  (size_t)roi_out->height,
+                                  clips);
   }
   else
   {
-    const uint8_t(*const xtrans)[6] = piece->xtrans;
-    DT_OMP_FOR()
-    for(int row = 0; row < roi_out->height; row++)
-    {
-      for(int col = 0; col < roi_out->width; col++)
-      {
-        const size_t ox = (size_t)row * roi_out->width + col;
-        const int irow = row + roi_out->y - roi_in->y;
-        const int icol = col + roi_out->x - roi_in->x;
-        const int c = fcol(irow, icol, filters, xtrans);
-        const float ref = MAX(0.5, 0.95f * clips[c]);
-        tmp[ox] = MAX(0.0f, (in[ox] - ref) / ref);
-      }
-    }
+    darkroom_highlights_mask_mosaic(in, tmp,
+                                    (size_t)roi_out->width,
+                                    (size_t)roi_out->height,
+                                    filters,
+                                    (const unsigned char *)piece->xtrans,
+                                    clips,
+                                    roi_out->y - roi_in->y,
+                                    roi_out->x - roi_in->x);
   }
   dt_gaussian_fast_blur(tmp, out, roi_out->width, roi_out->height, 1.0f, 0.0f, 1.0f, 1);
   dt_free_align(tmp);

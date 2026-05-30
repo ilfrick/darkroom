@@ -1109,6 +1109,39 @@ void darkroom_rawprepare_rgba(const float *in_buf,
                               const float *div_,
                               size_t ch);
 
+/*
+ * Highlights IOP — sRAW (RGB) clipping-mask builder.
+ *   refs[c] = max(0.5, 0.95 * clips[c])
+ *   tmp[k]  = max_over_c((in[4k+c] - refs[c]) / refs[c]),  floored at 0.
+ * `clips` is 4 floats; only the first 3 (RGB) are read.
+ * Matches the `filters == 0` branch of _provide_raster_mask() in
+ * src/iop/highlights.c.
+ */
+void darkroom_highlights_mask_sraw(const float *in_buf,
+                                   float *tmp_buf,
+                                   size_t width,
+                                   size_t height,
+                                   const float *clips);
+
+/*
+ * Highlights IOP — Bayer / X-Trans mosaic clipping-mask builder.
+ * For each pixel:
+ *   c = fcol(row + irow_offset, col + icol_offset, filters, xtrans)
+ *   tmp[k] = max(0, (in[k] - refs[c]) / refs[c])
+ * `xtrans` is a flat 36-byte buffer (6x6 pattern); read only when filters==9.
+ * Matches the `filters != 0` branch of _provide_raster_mask() in
+ * src/iop/highlights.c.
+ */
+void darkroom_highlights_mask_mosaic(const float *in_buf,
+                                     float *tmp_buf,
+                                     size_t width,
+                                     size_t height,
+                                     unsigned int filters,
+                                     const unsigned char *xtrans,
+                                     const float *clips,
+                                     int irow_offset,
+                                     int icol_offset);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
