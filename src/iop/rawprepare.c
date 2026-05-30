@@ -30,6 +30,7 @@
 #include "gui/presets.h"
 #include "imageio/imageio_rawspeed.h" // for dt_rawspeed_crop_dcraw_filters
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 
 #include <gtk/gtk.h>
 #include <stdint.h>
@@ -333,25 +334,19 @@ void process(dt_iop_module_t *self,
 
   float *const out = (float *const)ovoid;
 
+  // Absolute sensor coordinate of out(0,0), used by the Bayer-quadrant index.
+  const int x0 = roi_out->x + d->left;
+  const int y0 = roi_out->y + d->top;
+
   if(piece->pipe->dsc.filters && piece->dsc_in.channels == 1
      && piece->dsc_in.datatype == TYPE_UINT16)
   { // raw mosaic
-
-    const uint16_t *const in = (const uint16_t *const)ivoid;
-
-    DT_OMP_FOR_SIMD(collapse(2))
-    for(int j = 0; j < roi_out->height; j++)
-    {
-      for(int i = 0; i < roi_out->width; i++)
-      {
-        const size_t pin = (size_t)(roi_in->width * (j + csy) + csx) + i;
-        const size_t pout = (size_t)j * roi_out->width + i;
-
-        const int id = _BL(roi_out, d, j, i);
-        out[pout] = (in[pin] - d->sub[id]) / d->div[id];
-      }
-    }
-
+    darkroom_rawprepare_mosaic_u16((const uint16_t *)ivoid, out,
+                                   (size_t)roi_out->width,
+                                   (size_t)roi_out->height,
+                                   (size_t)roi_in->width,
+                                   csx, csy, x0, y0,
+                                   d->sub, d->div);
     piece->pipe->dsc.filters =
       dt_rawspeed_crop_dcraw_filters(self->dev->image_storage.buf_dsc.filters, csx, csy);
     _adjust_xtrans_filters(piece->pipe, csx, csy);
@@ -359,46 +354,25 @@ void process(dt_iop_module_t *self,
   else if(piece->pipe->dsc.filters && piece->dsc_in.channels == 1
           && piece->dsc_in.datatype == TYPE_FLOAT)
   { // raw mosaic, fp, unnormalized
-
-    const float *const in = (const float *const)ivoid;
-
-    DT_OMP_FOR_SIMD(collapse(2))
-    for(int j = 0; j < roi_out->height; j++)
-    {
-      for(int i = 0; i < roi_out->width; i++)
-      {
-        const size_t pin = (size_t)(roi_in->width * (j + csy) + csx) + i;
-        const size_t pout = (size_t)j * roi_out->width + i;
-
-        const int id = _BL(roi_out, d, j, i);
-        out[pout] = (in[pin] - d->sub[id]) / d->div[id];
-      }
-    }
-
+    darkroom_rawprepare_mosaic_f32((const float *)ivoid, out,
+                                   (size_t)roi_out->width,
+                                   (size_t)roi_out->height,
+                                   (size_t)roi_in->width,
+                                   csx, csy, x0, y0,
+                                   d->sub, d->div);
     piece->pipe->dsc.filters =
       dt_rawspeed_crop_dcraw_filters(self->dev->image_storage.buf_dsc.filters, csx, csy);
     _adjust_xtrans_filters(piece->pipe, csx, csy);
   }
   else
   { // pre-downsampled buffer that needs black/white scaling
-
-    const float *const in = (const float *const)ivoid;
-    const int ch = piece->colors;
-
-    DT_OMP_FOR_SIMD(collapse(3))
-    for(int j = 0; j < roi_out->height; j++)
-    {
-      for(int i = 0; i < roi_out->width; i++)
-      {
-        for(int c = 0; c < ch; c++)
-        {
-          const size_t pin = (size_t)ch * (roi_in->width * (j + csy) + csx + i) + c;
-          const size_t pout = (size_t)ch * (j * roi_out->width + i) + c;
-
-          out[pout] = (in[pin] - d->sub[c]) / d->div[c];
-        }
-      }
-    }
+    darkroom_rawprepare_rgba((const float *)ivoid, out,
+                             (size_t)roi_out->width,
+                             (size_t)roi_out->height,
+                             (size_t)roi_in->width,
+                             csx, csy,
+                             d->sub, d->div,
+                             (size_t)piece->colors);
   }
 
   if(piece->pipe->dsc.filters && piece->dsc_in.channels == 1 && d->apply_gainmaps)

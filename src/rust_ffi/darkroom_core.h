@@ -1059,6 +1059,56 @@ void darkroom_clahe_process(const float *in_buf,
                             int rad,
                             float slope);
 
+/*
+ * Rawprepare IOP — uint16 Bayer/X-Trans mosaic linearisation.
+ *   out[j*w + i] = (in[(j+csy)*in_w + (i+csx)] - sub[id]) / div[id]
+ * where `id = ((j+y0)&1)<<1 | ((i+x0)&1)`. `sub`/`div` are 4-float arrays.
+ * Matches the TYPE_UINT16 branch of process() in src/iop/rawprepare.c.
+ */
+void darkroom_rawprepare_mosaic_u16(const unsigned short *in_buf,
+                                    float *out_buf,
+                                    size_t out_width,
+                                    size_t out_height,
+                                    size_t in_width,
+                                    int csx,
+                                    int csy,
+                                    int x0,
+                                    int y0,
+                                    const float *sub,
+                                    const float *div_);
+
+/*
+ * Rawprepare IOP — float Bayer/X-Trans mosaic linearisation.
+ * Same as the uint16 variant but reads f32. Matches the TYPE_FLOAT branch.
+ */
+void darkroom_rawprepare_mosaic_f32(const float *in_buf,
+                                    float *out_buf,
+                                    size_t out_width,
+                                    size_t out_height,
+                                    size_t in_width,
+                                    int csx,
+                                    int csy,
+                                    int x0,
+                                    int y0,
+                                    const float *sub,
+                                    const float *div_);
+
+/*
+ * Rawprepare IOP — pre-downsampled RGBA buffer: per-channel black/scale.
+ *   out[k*ch + c] = (in[k_in*ch + c] - sub[c]) / div[c]
+ * Matches the no-mosaic else-branch of process() in src/iop/rawprepare.c.
+ */
+void darkroom_rawprepare_rgba(const float *in_buf,
+                              float *out_buf,
+                              size_t out_width,
+                              size_t out_height,
+                              size_t in_width,
+                              int csx,
+                              int csy,
+                              const float *sub,
+                              const float *div_,
+                              size_t ch);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
