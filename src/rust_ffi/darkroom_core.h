@@ -1297,6 +1297,28 @@ void darkroom_rawdenoise_xtrans_scatter(
     const unsigned char *xtrans, unsigned int c);
 
 /*
+ * Colormapping IOP — find the min/max of the a and b Lab channels.
+ * Returns via four out-pointers. Sentinels (FLT_MAX / -FLT_MAX) are written
+ * when npixels == 0. Matches the reduction loop in kmeans() (colormapping.c:298).
+ */
+void darkroom_colormapping_ab_range(const float *col, size_t npixels,
+                                    float *out_a_min, float *out_a_max,
+                                    float *out_b_min, float *out_b_max);
+
+/*
+ * Colormapping IOP — compute the blended L-delta for every pixel.
+ * out[k*4] = clamp(0.5 * ((L*(1-eq) + source_ihist[target_hist[bin]]*eq) - L) + 50, 0, 100)
+ * `target_hist` and `source_ihist` are both of length `histn`.
+ * Matches the DT_OMP_FOR loop in process() (colormapping.c:492).
+ */
+void darkroom_colormapping_l_delta(const float *in_buf, float *out_buf,
+                                   size_t npixels,
+                                   const int *target_hist,
+                                   const float *source_ihist,
+                                   size_t histn,
+                                   float equalization);
+
+/*
  * CLAHE (Contrast-Limited Adaptive Histogram Equalisation).
  * Two-pass algorithm: builds a per-pixel luminance map = (max(RGB)+min(RGB))/2,
  * then for each row maintains a sliding (2*rad+1)^2 histogram of luminance

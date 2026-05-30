@@ -24,6 +24,7 @@
 #include "common/opencl.h"
 #include "common/points.h"
 #include "control/control.h"
+#include "rust_ffi/darkroom_core.h"
 #include "develop/develop.h"
 #include "develop/imageop.h"
 #include "develop/imageop_math.h"
@@ -291,20 +292,9 @@ static void kmeans(const float *col, const int width, const int height, const in
   int *const cnt = malloc(sizeof(int) * n);
   int count;
 
-  float a_min = FLT_MAX, b_min = FLT_MAX, a_max = -FLT_MAX, b_max = -FLT_MAX;
-
+  float a_min, b_min, a_max, b_max;
   const size_t npixels = (size_t)height * width;
-  // find the extremes of a/b color channels
-  DT_OMP_FOR(reduction(min: a_min, b_min) reduction(max: a_max, b_max))
-  for(size_t k = 0; k < npixels; k++)
-  {
-    const float a = col[4 * k + 1];
-    const float b = col[4 * k + 2];
-    a_min = fminf(a, a_min);
-    a_max = fmaxf(a, a_max);
-    b_min = fminf(b, b_min);
-    b_max = fmaxf(b, b_max);
-  }
+  darkroom_colormapping_ab_range(col, npixels, &a_min, &a_max, &b_min, &b_max);
 
   // init n clusters for a, b channels at random
   for(int k = 0; k < n; k++)
@@ -488,16 +478,10 @@ void process(dt_iop_module_t *self, dt_dev_pixelpipe_iop_t *piece, const void *c
     }
 
     const size_t npixels = (size_t)height * width;
-// first get delta L of equalized L minus original image L, scaled to fit into [0 .. 100]
-    DT_OMP_FOR()
-    for(size_t k = 0; k < npixels * 4; k += 4)
-    {
-      const float L = in[k];
-      out[k] = 0.5f * ((L * (1.0f - equalization)
-                        + data->source_ihist[data->target_hist[(int)CLAMP(
-                              HISTN * L / 100.0f, 0.0f, (float)HISTN - 1.0f)]] * equalization) - L) + 50.0f;
-      out[k] = CLAMP(out[k], 0.0f, 100.0f);
-    }
+    // first get delta L of equalized L minus original image L, scaled to fit into [0 .. 100]
+    darkroom_colormapping_l_delta(in, out, npixels,
+                                  data->target_hist, data->source_ihist,
+                                  (size_t)HISTN, equalization);
 
     if(equalization > 0.001f)
     {
