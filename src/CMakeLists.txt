@@ -1101,6 +1101,7 @@ if(CARGO)
             "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/colorchecker.rs"
             "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/rasterfile.rs"
             "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/diffuse.rs"
+            "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/colortransfer.rs"
             "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/math.rs"
             "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/raw.rs"
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"

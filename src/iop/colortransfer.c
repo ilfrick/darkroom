@@ -24,6 +24,7 @@
 #include "gui/accelerators.h"
 #include "gui/gtk.h"
 #include "iop/iop_api.h"
+#include "rust_ffi/darkroom_core.h"
 
 #include <gtk/gtk.h>
 #include <inttypes.h>
@@ -324,18 +325,13 @@ void process(dt_iop_module_t *self, dt_dev_pixelpipe_iop_t *piece, const void *c
     // apply histogram of L and clustering of (a,b)
     int hist[HISTN];
     capture_histogram(in, roi_in, hist);
-    DT_OMP_FOR()
-    for(int k = 0; k < roi_out->height; k++)
-    {
-      size_t j = (size_t)ch * roi_out->width * k;
-      for(int i = 0; i < roi_out->width; i++)
-      {
-        // L: match histogram
-        out[j] = data->hist[hist[(int)CLAMP(HISTN * in[j] / 100.0, 0, HISTN - 1)]];
-        out[j] = CLAMP(out[j], 0, 100);
-        j += ch;
-      }
-    }
+    darkroom_colortransfer_apply_l_histogram(in, out,
+                                             (size_t)roi_out->width,
+                                             (size_t)roi_out->height,
+                                             (size_t)ch,
+                                             hist,
+                                             data->hist,
+                                             (size_t)HISTN);
 
     // cluster input buffer
     float2 *const mean = malloc(sizeof(float2) * data->n);

@@ -1150,6 +1150,31 @@ void darkroom_diffuse_build_mask(const float *in_buf,
                                  float threshold);
 
 /*
+ * Colortransfer IOP — L-histogram-matching pass.
+ *
+ * Per pixel:
+ *   src_bin    = clamp(HISTN * in_L / 100, 0, HISTN - 1)
+ *   target_bin = cdf_lut[src_bin]                          (already normalised)
+ *   out_L      = clamp(inverse_cdf[target_bin], 0, 100)
+ *
+ * Only touches the L channel; the ab clustering pass that follows in C
+ * is responsible for the rest. `cdf_lut` is produced by capture_histogram()
+ * (values in [0, HISTN-1]); `inverse_cdf` is produced by invert_histogram()
+ * (values in [0, 100)). Both LUTs are `histn` entries long.
+ *
+ * Matches the first DT_OMP_FOR loop of the APPLY branch in
+ * src/iop/colortransfer.c (line 327).
+ */
+void darkroom_colortransfer_apply_l_histogram(const float *in_buf,
+                                              float *out_buf,
+                                              size_t width,
+                                              size_t height,
+                                              size_t ch,
+                                              const int *cdf_lut,
+                                              const float *inverse_cdf,
+                                              size_t histn);
+
+/*
  * CLAHE (Contrast-Limited Adaptive Histogram Equalisation).
  * Two-pass algorithm: builds a per-pixel luminance map = (max(RGB)+min(RGB))/2,
  * then for each row maintains a sliding (2*rad+1)^2 histogram of luminance
