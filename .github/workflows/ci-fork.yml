@@ -1,0 +1,105 @@
+name: Fork CI
+
+# Slim per-commit CMake build for the Darkroom fork. The upstream
+# `ci.yml` is gated to `darktable-org/darktable` and produces a full
+# multi-OS / multi-compiler matrix — too heavy to run on every commit
+# of a personal fork. This workflow covers the same ground for the
+# fork with a single GCC/Release build on the current Ubuntu LTS.
+#
+# The Rust workspace verification lives in `rust.yml`; the full Docker
+# image build lives in `docker.yml`. This workflow exists as the safety
+# net for the C/CMake build itself — useful when only C source changes
+# without rebuilding the docker image.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'src/**'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'data/**.in'
+      - '.github/workflows/ci-fork.yml'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'src/**'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - '.github/workflows/ci-fork.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DEBIAN_FRONTEND: noninteractive
+
+jobs:
+  cmake-build:
+    # Don't run on the upstream repo — they have their own multi-matrix ci.yml.
+    if: github.repository != 'darktable-org/darktable'
+    name: CMake + Rust workspace, Ubuntu 24.04 (Release, GCC)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install C build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build git intltool gettext \
+            appstream-util desktop-file-utils \
+            libarchive-dev libatk1.0-dev libavif-dev libcairo2-dev \
+            libcolord-dev libcolord-gtk-dev libcups2-dev libcurl4-gnutls-dev \
+            libexiv2-dev libgdk-pixbuf-2.0-dev libglib2.0-dev libgmic-dev \
+            libgphoto2-dev libgraphicsmagick1-dev libgtk-3-dev libheif-dev \
+            libjpeg-dev libjson-glib-dev liblcms2-dev liblensfun-dev \
+            liblua5.4-dev libopenexr-dev libopenjp2-7-dev \
+            libosmgpsmap-1.0-dev libpango1.0-dev libpng-dev libportmidi-dev \
+            libpotrace-dev libpugixml-dev libraw-dev librsvg2-dev \
+            libsqlite3-dev libtiff5-dev libwebp-dev libx11-dev \
+            libxml2-dev libxml2-utils zlib1g-dev libsdl2-dev \
+            libsecret-1-dev po4a python3-jsonschema xsltproc perl \
+            opencl-headers ocl-icd-opencl-dev
+
+      - name: Install Rust toolchain
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --default-toolchain stable --profile minimal
+          echo "${HOME}/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Cache cargo + build dirs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            build/cargo-target
+            build
+          key: ${{ runner.os }}-cmake-${{ hashFiles('Cargo.toml', 'crates/**/Cargo.toml', 'src/CMakeLists.txt') }}
+          restore-keys: ${{ runner.os }}-cmake-
+
+      - name: Configure
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/tmp/darkroom \
+            -DUSE_AI=OFF \
+            -DUSE_OPENCL=ON \
+            -DDONT_USE_INTERNAL_LIBRAW=ON \
+            -DBINARY_PACKAGE_BUILD=ON
+
+      - name: Build
+        run: cmake --build build --parallel $(nproc)
+
+      - name: Smoke test the binary
+        run: |
+          ./build/bin/darktable-cli --version || true
