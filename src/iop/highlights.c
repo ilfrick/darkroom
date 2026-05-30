@@ -703,9 +703,7 @@ static void process_clip(dt_iop_module_t *self,
   if(ch == 4)
   {
     const size_t msize = (size_t)roi_out->width * roi_out->height * ch;
-    DT_OMP_FOR()
-    for(size_t k = 0; k < msize; k++)
-      out[k] = fminf(clip, in[k]);
+    darkroom_highlights_clip_sraw(in, out, msize, clip);
   }
   else
   {
@@ -761,36 +759,20 @@ static void process_visualize(dt_dev_pixelpipe_iop_t *piece,
   if(filters == 0)
   {
     const size_t npixels = roi_out->width * (size_t)roi_out->height;
-    DT_OMP_FOR()
-    for(size_t k = 0; k < 4*npixels; k += 4)
-    {
-      for_each_channel(c)
-        out[k+c] = (in[k+c] < clips[c]) ? 0.2f * in[k+c] : 1.0f;
-      out[k+3] = 0.0f;
-    }
+    darkroom_highlights_visualize_sraw(in, out, npixels, clips);
   }
   else
   {
-    DT_OMP_FOR()
-    for(int row = 0; row < roi_out->height; row++)
-    {
-      for(int col = 0; col < roi_out->width; col++)
-      {
-        const size_t ox = (size_t)row * roi_out->width + col;
-        const int irow = row + roi_out->y - roi_in->y;
-        const int icol = col + roi_out->x - roi_in->x;
-        const size_t ix = (size_t)irow * roi_in->width + icol;
-
-        if((icol >= 0) && (irow >= 0) && (irow < roi_in->height) && (icol < roi_in->width))
-        {
-          const int c = fcol(irow, icol, filters, xtrans);
-          const float ival = in[ix];
-          out[ox] = (ival < clips[c]) ? 0.2f * ival : 1.0f;
-        }
-        else
-          out[ox] = 0.0f;
-      }
-    }
+    darkroom_highlights_visualize_mosaic(in, out,
+                                         (size_t)roi_out->width,
+                                         (size_t)roi_out->height,
+                                         (size_t)roi_in->width,
+                                         (size_t)roi_in->height,
+                                         filters,
+                                         (const unsigned char *)xtrans,
+                                         clips,
+                                         roi_out->y - roi_in->y,
+                                         roi_out->x - roi_in->x);
   }
 }
 

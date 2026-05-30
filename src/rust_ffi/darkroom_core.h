@@ -1274,6 +1274,53 @@ void darkroom_highlights_mask_mosaic(const float *in_buf,
                                      int irow_offset,
                                      int icol_offset);
 
+/*
+ * Highlights IOP — CLIP mode, sRAW path.
+ * out[k] = fminf(clip, in[k]) for every float in the buffer.
+ * NaN propagation matches the C fminf semantics exactly.
+ * Matches the `ch == 4` branch of process_clip() in src/iop/highlights.c.
+ */
+void darkroom_highlights_clip_sraw(const float *in_buf,
+                                   float *out_buf,
+                                   size_t nfloats,
+                                   float clip);
+
+/*
+ * Highlights IOP — visualise mode, sRAW path.
+ * For every pixel k and c in 0..3:
+ *   out[k+c] = (in[k+c] < clips[c]) ? 0.2 * in[k+c] : 1.0
+ *   out[k+3] = 0.0
+ * Matches the `filters == 0` branch of process_visualize() in
+ * src/iop/highlights.c.
+ */
+void darkroom_highlights_visualize_sraw(const float *in_buf,
+                                        float *out_buf,
+                                        size_t npixels,
+                                        const float *clips);
+
+/*
+ * Highlights IOP — visualise mode, mosaic path.
+ * For every output (row, col):
+ *   irow = row + irow_offset
+ *   icol = col + icol_offset
+ *   if in-bounds: c = fcol(irow, icol, filters, xtrans);
+ *                 out = in < clips[c] ? 0.2*in : 1.0
+ *   else:        out = 0.0
+ * Matches the `filters != 0` branch of process_visualize() in
+ * src/iop/highlights.c.
+ */
+void darkroom_highlights_visualize_mosaic(const float *in_buf,
+                                          float *out_buf,
+                                          size_t out_width,
+                                          size_t out_height,
+                                          size_t in_width,
+                                          size_t in_height,
+                                          unsigned int filters,
+                                          const unsigned char *xtrans,
+                                          const float *clips,
+                                          int irow_offset,
+                                          int icol_offset);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
