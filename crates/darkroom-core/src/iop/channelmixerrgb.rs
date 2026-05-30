@@ -315,7 +315,7 @@ pub unsafe extern "C" fn darkroom_channelmixerrgb_loop_switch(
     for k in 0..npixels {
         let b = k * 4;
         // max_nan: replace NaN with minval, clamp to minval (≥0 when clip)
-        let mut t2 = [
+        let t2 = [
             f32::max(input[b],     minval),
             f32::max(input[b + 1], minval),
             f32::max(input[b + 2], minval),
@@ -356,7 +356,7 @@ pub unsafe extern "C" fn darkroom_channelmixerrgb_loop_switch(
         if clip_b { for c in 0..3 { xyz[c] = xyz[c].max(0.0); } }
 
         // Gamut mapping in xyY/uvY space
-        let mut gmapped = gamut_mapping(xyz, gamut, clip_b);
+        let gmapped = gamut_mapping(xyz, gamut, clip_b);
 
         // Convert XYZ → output space (LMS for adaptation modes, RGB for bypass)
         let mut lms_or_rgb = if kind >= 0 && kind <= KIND_XYZ {

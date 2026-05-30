@@ -24,7 +24,7 @@ use crate::{
 };
 
 const THRESHOLD: f32 = 2.3283064365386963e-10; // 2^−32
-const LOG2_TO_LOG10: f32 = 0.3010299956;
+const LOG2_TO_LOG10: f32 = std::f32::consts::LOG10_2;
 
 pub struct Negadoctor;
 
