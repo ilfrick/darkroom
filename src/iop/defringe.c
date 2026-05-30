@@ -23,6 +23,7 @@
 #include "common/math.h"
 #include "develop/imageop.h"
 #include "develop/imageop_math.h"
+#include "rust_ffi/darkroom_core.h"
 #include "develop/imageop_gui.h"
 #include "develop/tiling.h"
 #include "gui/gtk.h"
@@ -267,21 +268,10 @@ void process(dt_iop_module_t *self,
     xy_small[2*u+1] = dy;
   }
 
-  const float use_global_average = MODE_GLOBAL_AVERAGE == d->op_mode;
-  DT_OMP_FOR_SIMD(reduction(+ : avg_edge_chroma))
-  for(size_t j = 0; j < (size_t)height * width * 4; j += 4)
-  {
-    // edge-detect on color channels
-    // method: difference of original to gaussian blurred image:
-    const float a = in[j + 1] - out[j + 1];
-    const float b = in[j + 2] - out[j + 2];
-    const float edge = (a * a + b * b); // range up to 2*(256)^2 -> approx. 0 to 131072
-
-    // save local edge chroma in out[.. +3] , this is later compared with threshold
-    out[j + 3] = edge;
-    // the average chroma of the edge-layer in the roi
-    avg_edge_chroma += edge * use_global_average;
-  }
+  const gboolean use_global_average = (MODE_GLOBAL_AVERAGE == d->op_mode);
+  avg_edge_chroma = darkroom_defringe_edge_chroma_pass(in, out,
+                                                       (size_t)width * height,
+                                                       use_global_average ? 1 : 0);
 
   float thresh;
   if(use_global_average)

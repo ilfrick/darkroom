@@ -56,6 +56,7 @@ pub mod hotpixels;
 pub mod clahe;
 pub mod rawprepare;
 pub mod highlights;
+pub mod defringe;
 
 use crate::{params::IopParams, roi::RoiIn, Result};
 

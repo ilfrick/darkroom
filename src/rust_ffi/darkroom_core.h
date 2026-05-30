@@ -1081,6 +1081,21 @@ int darkroom_hotpixels_xtrans(const float *in_buf,
                               int mark_fixed);
 
 /*
+ * Defringe IOP — per-pixel edge-chroma map + optional global average sum.
+ *   edge = (in.a - out.a)^2 + (in.b - out.b)^2
+ *   out.alpha = edge
+ *   sum += edge   (only when use_global_average != 0)
+ * `out_buf` arrives pre-filled with the gaussian-blurred copy of `in_buf`
+ * (the C side calls dt_gaussian_blur_4c before invoking us). Returns the
+ * chroma sum so the caller can divide by pixel count for the average.
+ * Matches the DT_OMP_FOR_SIMD loop in src/iop/defringe.c (process()).
+ */
+float darkroom_defringe_edge_chroma_pass(const float *in_buf,
+                                         float *out_buf,
+                                         size_t npixels,
+                                         int use_global_average);
+
+/*
  * CLAHE (Contrast-Limited Adaptive Histogram Equalisation).
  * Two-pass algorithm: builds a per-pixel luminance map = (max(RGB)+min(RGB))/2,
  * then for each row maintains a sliding (2*rad+1)^2 histogram of luminance

@@ -1097,6 +1097,7 @@ if(CARGO)
             "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/clahe.rs"
             "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/rawprepare.rs"
             "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/highlights.rs"
+            "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/iop/defringe.rs"
             "${CMAKE_SOURCE_DIR}/crates/darkroom-core/src/raw.rs"
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     COMMENT "Building Rust crate darkroom-core"
