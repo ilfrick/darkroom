@@ -1318,6 +1318,34 @@ void darkroom_colormapping_l_delta(const float *in_buf, float *out_buf,
                                    size_t histn,
                                    float equalization);
 
+/* Colorequal IOP — initialise per-pixel UV covariance (U*U, U*V, V*V). */
+void darkroom_colorequal_init_covariance(const float *uv_buf, float *cov_buf,
+                                         size_t pixels);
+/* Colorequal IOP — finalise covariance by subtracting avg(x)*avg(y). */
+void darkroom_colorequal_finish_covariance(const float *uv_buf, float *cov_buf,
+                                           size_t pixels);
+/* Colorequal IOP — compute guided-filter regression coefficients (a, b). */
+void darkroom_colorequal_prepare_prefilter(const float *uv_buf,
+                                           const float *cov_buf,
+                                           float *a_buf,
+                                           float *b_buf,
+                                           size_t pixels,
+                                           float eps);
+/*
+ * Colorequal IOP — apply guided-filter regression with sigmoid blending.
+ * w = get_satweight(sat[k] - sat_shift) — linear interpolation in the
+ * precomputed logistic table (length 2*satsize+1); caller passes the
+ * live C static array produced by _init_satweights(contrast).
+ */
+void darkroom_colorequal_apply_prefilter(float *uv_buf,
+                                         const float *saturation,
+                                         const float *a_buf,
+                                         const float *b_buf,
+                                         size_t npixels,
+                                         float sat_shift,
+                                         const float *satweights,
+                                         size_t satsize);
+
 /*
  * CLAHE (Contrast-Limited Adaptive Histogram Equalisation).
  * Two-pass algorithm: builds a per-pixel luminance map = (max(RGB)+min(RGB))/2,

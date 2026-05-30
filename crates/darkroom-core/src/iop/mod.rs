@@ -64,6 +64,7 @@ pub mod colortransfer;
 pub mod cacorrectrgb;
 pub mod rawdenoise;
 pub mod colormapping;
+pub mod colorequal;
 
 use crate::{params::IopParams, roi::RoiIn, Result};
 

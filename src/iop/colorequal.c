@@ -69,6 +69,7 @@ None;midi:CC24=iop/colorequal/brightness/magenta
 #include "develop/blend.h"
 #include "develop/develop.h"
 #include "develop/imageop.h"
+#include "rust_ffi/darkroom_core.h"
 #include "develop/imageop_math.h"
 #include "develop/imageop_gui.h"
 #include "develop/tiling.h"
@@ -479,16 +480,7 @@ static float *const _init_covariance(const size_t pixels, const float *const res
   if(!covariance)
     return covariance;
 
-  DT_OMP_FOR()
-  for(size_t k = 0; k < pixels; k++)
-  {
-    // corr(U, U)
-    covariance[4 * k + 0] = UV[2 * k + 0] * UV[2 * k + 0];
-    // corr(U, V)
-    covariance[4 * k + 1] = covariance[4 * k + 2] = UV[2 * k] * UV[2 * k + 1];
-    // corr(V, V)
-    covariance[4 * k + 3] = UV[2 * k + 1] * UV[2 * k + 1];
-  }
+  darkroom_colorequal_init_covariance(UV, covariance, pixels);
   return covariance;
 }
 
@@ -499,17 +491,7 @@ static void _finish_covariance(const size_t pixels,
 {
   // Finish the UV covariance matrix computation by subtracting avg(x) * avg(y)
   // to avg(x * y) already computed
-  DT_OMP_FOR()
-  for(size_t k = 0; k < pixels; k++)
-  {
-    // covar(U, U) = var(U)
-    covariance[4 * k + 0] -= UV[2 * k + 0] * UV[2 * k + 0];
-    // covar(U, V)
-    covariance[4 * k + 1] -= UV[2 * k + 0] * UV[2 * k + 1];
-    covariance[4 * k + 2] -= UV[2 * k + 0] * UV[2 * k + 1];
-    // covar(V, V) = var(V)
-    covariance[4 * k + 3] -= UV[2 * k + 1] * UV[2 * k + 1];
-  }
+  darkroom_colorequal_finish_covariance(UV, covariance, pixels);
 }
 
 DT_OMP_DECLARE_SIMD(aligned(UV, covariance, a, b: 64))
@@ -520,46 +502,7 @@ static void _prepare_prefilter(const size_t pixels,
                                float *const restrict b,
                                const float eps)
 {
-  DT_OMP_FOR()
-  for(size_t k = 0; k < pixels; k++)
-  {
-    // Extract the 2×2 covariance matrix sigma = cov(U, V) at current pixel
-    // and add the variance threshold : sigma' = sigma + epsilon * Identity
-    const dt_aligned_pixel_t Sigma = {covariance[4 * k + 0] + eps,
-                                covariance[4 * k + 1],
-                                covariance[4 * k + 2],
-                                covariance[4 * k + 3] + eps};
-
-    // Invert the 2×2 sigma matrix algebraically
-    // see https://www.mathcentre.ac.uk/resources/uploaded/sigma-matrices7-2009-1.pdf
-    const float det = Sigma[0] * Sigma[3] - Sigma[1] * Sigma[2];
-
-    // a(chan) = dot_product(cov(chan, uv), sigma_inv)
-    if(fabsf(det) > 4.f * FLT_EPSILON)
-    {
-      const dt_aligned_pixel_t sigma_inv = { Sigma[3] / det, -Sigma[1] / det,
-                                      -Sigma[2] / det,  Sigma[0] / det };
-      // find a_1, a_2 s.t. U' = a_1 * U + a_2 * V
-      a[4 * k + 0] = (covariance[4 * k + 0] * sigma_inv[0]
-                    + covariance[4 * k + 1] * sigma_inv[1]);
-      a[4 * k + 1] = (covariance[4 * k + 0] * sigma_inv[2]
-                    + covariance[4 * k + 1] * sigma_inv[3]);
-
-      // find a_3, a_4 s.t. V' = a_3 * U + a_4 V
-      a[4 * k + 2] = (covariance[4 * k + 2] * sigma_inv[0]
-                    + covariance[4 * k + 3] * sigma_inv[1]);
-      a[4 * k + 3] = (covariance[4 * k + 2] * sigma_inv[2]
-                    + covariance[4 * k + 3] * sigma_inv[3]);
-    }
-    else
-    {
-      // determinant too close to 0: singular matrix
-      a[4 * k + 0] = a[4 * k + 1] = a[4 * k + 2] = a[4 * k + 3] = 0.f;
-    }
-
-    b[2 * k + 0] = UV[2 * k + 0]  - a[4 * k + 0] * UV[2 * k + 0]  - a[4 * k + 1] * UV[2 * k + 1];
-    b[2 * k + 1] = UV[2 * k + 1]  - a[4 * k + 2] * UV[2 * k + 0]  - a[4 * k + 3] * UV[2 * k + 1];
-  }
+  darkroom_colorequal_prepare_prefilter(UV, covariance, a, b, pixels, eps);
 }
 
 DT_OMP_DECLARE_SIMD(aligned(a, b, saturation, UV: 64))
@@ -570,20 +513,8 @@ static void _apply_prefilter(const size_t npixels,
                              const float *const restrict a,
                              const float *const restrict b)
 {
-  DT_OMP_FOR_SIMD()
-  for(size_t k = 0; k < npixels; k++)
-  {
-    // For each correction factor, we re-express it as a[0] * U + a[1] * V + b
-    const float uv[2] = { UV[2 * k + 0], UV[2 * k + 1] };
-    const float cv[2] = { a[4 * k + 0] * uv[0] + a[4 * k + 1] * uv[1] + b[2 * k + 0],
-                          a[4 * k + 2] * uv[0] + a[4 * k + 3] * uv[1] + b[2 * k + 1] };
-
-    // we avoid chroma blurring into achromatic areas by interpolating
-    // input UV vs corrected UV
-    const float satweight = _get_satweight(saturation[k] - sat_shift);
-    UV[2 * k + 0] = interpolatef(satweight, cv[0], uv[0]);
-    UV[2 * k + 1] = interpolatef(satweight, cv[1], uv[1]);
-  }
+  darkroom_colorequal_apply_prefilter(UV, saturation, a, b, npixels,
+                                      sat_shift, satweights, (size_t)SATSIZE);
 }
 
 static void _prefilter_chromaticity(float *const restrict UV,
