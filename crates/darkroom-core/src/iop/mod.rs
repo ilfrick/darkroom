@@ -59,6 +59,7 @@ pub mod highlights;
 pub mod defringe;
 pub mod colorchecker;
 pub mod rasterfile;
+pub mod diffuse;
 
 use crate::{params::IopParams, roi::RoiIn, Result};
 

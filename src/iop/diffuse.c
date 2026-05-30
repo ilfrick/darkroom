@@ -21,6 +21,7 @@
 #include "bauhaus/bauhaus.h"
 #include "common/bspline.h"
 #include "common/darktable.h"
+#include "rust_ffi/darkroom_core.h"
 #include "common/dwt.h"
 #include "common/gaussian.h"
 #include "common/image.h"
@@ -1295,12 +1296,7 @@ static inline void build_mask(const float *const restrict input,
                               const size_t width,
                               const size_t height)
 {
-  DT_OMP_FOR_SIMD(aligned(mask, input : 64))
-  for(size_t k = 0; k < height * width * 4; k += 4)
-  {
-    // TRUE if any channel is above threshold
-    mask[k / 4] = (input[k] > threshold || input[k + 1] > threshold || input[k + 2] > threshold);
-  }
+  darkroom_diffuse_build_mask(input, mask, width * height, threshold);
 }
 
 static inline void inpaint_mask(float *const restrict inpainted,

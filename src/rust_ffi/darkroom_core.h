@@ -1139,6 +1139,17 @@ void darkroom_rasterfile_visual_rgba(float *out_buf,
                                      size_t npixels);
 
 /*
+ * Diffuse IOP — per-pixel mask builder.
+ *   mask[k] = (in[4k] > threshold || in[4k+1] > threshold || in[4k+2] > threshold)
+ * Matches build_mask() in src/iop/diffuse.c. Used by the inpaint /
+ * reconstruction pre-pass.
+ */
+void darkroom_diffuse_build_mask(const float *in_buf,
+                                 unsigned char *mask,
+                                 size_t npixels,
+                                 float threshold);
+
+/*
  * CLAHE (Contrast-Limited Adaptive Histogram Equalisation).
  * Two-pass algorithm: builds a per-pixel luminance map = (max(RGB)+min(RGB))/2,
  * then for each row maintains a sliding (2*rad+1)^2 histogram of luminance
