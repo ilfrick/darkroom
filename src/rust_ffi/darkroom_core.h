@@ -1197,6 +1197,62 @@ void darkroom_cacorrectrgb_normalize_manifolds(
     size_t height,
     unsigned int guide);
 
+/* Build initial per-pixel manifolds (get_manifolds first pass). */
+void darkroom_cacorrectrgb_build_manifolds(
+    const float *in_buf,
+    const float *blurred_in,
+    float *manifold_lower,
+    float *manifold_higher,
+    size_t width,
+    size_t height,
+    unsigned int guide);
+
+/* Refinement pass: update manifolds using first-pass estimates. */
+void darkroom_cacorrectrgb_refine_manifolds(
+    const float *in_buf,
+    const float *blurred_in,
+    const float *blurred_manifold_lower,
+    const float *blurred_manifold_higher,
+    float *manifold_lower,
+    float *manifold_higher,
+    size_t width,
+    size_t height,
+    unsigned int guide);
+
+/* Pack two 4-ch manifolds into one 6-ch buffer (alpha dropped). */
+void darkroom_cacorrectrgb_pack_manifolds(
+    const float *blurred_manifold_lower,
+    const float *blurred_manifold_higher,
+    float *manifolds_out,
+    size_t npixels);
+
+/* Apply manifold-based CA correction. mode: 0=standard,1=darken,2=brighten. */
+void darkroom_cacorrectrgb_apply_correction(
+    const float *in_buf,
+    const float *manifolds,
+    size_t width,
+    size_t height,
+    unsigned int guide,
+    unsigned int mode,
+    float *out_buf);
+
+/* Pack in/out channel pairs for the reduce_artifacts blur step. */
+void darkroom_cacorrectrgb_pack_inout(
+    const float *in_buf,
+    const float *out_buf,
+    float *inout_buf,
+    size_t npixels,
+    unsigned int guide);
+
+/* Weighted blend of correction toward input when averages diverge. */
+void darkroom_cacorrectrgb_blend_artifacts(
+    const float *in_buf,
+    const float *blurred_inout,
+    float *out_buf,
+    size_t npixels,
+    unsigned int guide,
+    float safety);
+
 /*
  * CLAHE (Contrast-Limited Adaptive Histogram Equalisation).
  * Two-pass algorithm: builds a per-pixel luminance map = (max(RGB)+min(RGB))/2,

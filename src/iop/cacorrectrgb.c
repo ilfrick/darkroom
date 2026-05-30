@@ -227,45 +227,9 @@ static void get_manifolds(const float* const restrict in, const size_t width, co
   if(!g) return;
   dt_gaussian_blur_4c(g, in, blurred_in);
 
-  // construct the manifolds
-  // higher manifold is the blur of all pixels that are above average,
-  // lower manifold is the blur of all pixels that are below average
-  // we use the guide channel to categorize the pixels as above or below average
-  DT_OMP_FOR()
-  for(size_t k = 0; k < width * height; k++)
-  {
-    const float pixelg = fmaxf(in[k * 4 + guide], 1E-6f);
-    const float avg = blurred_in[k * 4 + guide];
-    float weighth = (pixelg >= avg);
-    float weightl = (pixelg <= avg);
-    float logdiffs[2];
-    for(size_t kc = 0; kc <= 1; kc++)
-    {
-      const size_t c = (kc + guide + 1) % 3;
-      const float pixel = fmaxf(in[k * 4 + c], 1E-6f);
-      const float log_diff = log2f(pixel / pixelg);
-      logdiffs[kc] = log_diff;
-    }
-    // regularization of logdiff to avoid too many problems with noise:
-    // we lower the weights of pixels with too high logdiff
-    const float maxlogdiff = fmaxf(fabsf(logdiffs[0]), fabsf(logdiffs[1]));
-    if(maxlogdiff > DT_CACORRECTRGB_MAX_EV_DIFF)
-    {
-      const float correction_weight = DT_CACORRECTRGB_MAX_EV_DIFF / maxlogdiff;
-      weightl *= correction_weight;
-      weighth *= correction_weight;
-    }
-    for(size_t kc = 0; kc <= 1; kc++)
-    {
-      const size_t c = (kc + guide + 1) % 3;
-      manifold_higher[k * 4 + c] = logdiffs[kc] * weighth;
-      manifold_lower[k * 4 + c] = logdiffs[kc] * weightl;
-    }
-    manifold_higher[k * 4 + guide] = pixelg * weighth;
-    manifold_lower[k * 4 + guide] = pixelg * weightl;
-    manifold_higher[k * 4 + 3] = weighth;
-    manifold_lower[k * 4 + 3] = weightl;
-  }
+  // construct the manifolds (Rust FFI)
+  darkroom_cacorrectrgb_build_manifolds(in, blurred_in, manifold_lower, manifold_higher,
+                                        width, height, (unsigned int)guide);
 
   dt_gaussian_blur_4c(g, manifold_higher, blurred_manifold_higher);
   dt_gaussian_blur_4c(g, manifold_lower, blurred_manifold_lower);
@@ -296,137 +260,11 @@ static void get_manifolds(const float* const restrict in, const size_t width, co
     // refine the manifolds
     // improve result especially on very degraded images
     // we use a blur of normal size for this step
-    DT_OMP_FOR()
-    for(size_t k = 0; k < width * height; k++)
-    {
-      // in order to refine the manifolds, we will compute weights
-      // for which all channels will have a contribution.
-      // this will allow to avoid taking too much into account pixels
-      // that have wrong values due to the chromatic aberration
-      //
-      // for example, here:
-      // guide:  1_____
-      //               |_____0
-      // guided: 1______
-      //                |____0
-      //               ^ this pixel makes the estimated lower manifold erroneous
-      // here, the higher and lower manifolds values computed are:
-      // _______|_higher_|________lower_________|
-      // guide  |    1   |   0                  |
-      // guided |    1   |(1 + 4 * 0) / 5 = 0.2 |
-      //
-      // the lower manifold of the guided is 0.2 if we consider only the guide
-      //
-      // at this step of the algorithm, we know estimates of manifolds
-      //
-      // we can refine the manifolds by computing weights that reduce the influence
-      // of pixels that are probably suffering from chromatic aberrations
-      const float pixelg = log2f(fmaxf(in[k * 4 + guide], 1E-6f));
-      const float highg = log2f(fmaxf(blurred_manifold_higher[k * 4 + guide], 1E-6f));
-      const float lowg = log2f(fmaxf(blurred_manifold_lower[k * 4 + guide], 1E-6f));
-      const float avgg = log2f(fmaxf(blurred_in[k * 4 + guide], 1E-6f));
-
-      float w = 1.0f;
-      for(size_t kc = 0; kc <= 1; kc++)
-      {
-        const size_t c = (guide + kc + 1) % 3;
-        // weight by considering how close pixel is for a manifold,
-        // and how close the log difference between the channels is
-        // close to the wrong log difference between the channels.
-
-        const float pixel = log2f(fmaxf(in[k * 4 + c], 1E-6f));
-        const float highc = log2f(fmaxf(blurred_manifold_higher[k * 4 + c], 1E-6f));
-        const float lowc = log2f(fmaxf(blurred_manifold_lower[k * 4 + c], 1E-6f));
-
-        // find how likely the pixel is part of a chromatic aberration
-        // (lowc, lowg) and (highc, highg) are valid points
-        // (lowc, highg) and (highc, lowg) are chromatic aberrations
-        const float dist_to_ll = fabsf(pixelg - lowg - pixel + lowc);
-        const float dist_to_hh = fabsf(pixelg - highg - pixel + highc);
-        const float dist_to_lh = fabsf((pixelg - pixel) - (highg - lowc));
-        const float dist_to_hl = fabsf((pixelg - pixel) - (lowg - highc));
-
-        float dist_to_good = 1.0f;
-        if(fabsf(pixelg - lowg) < fabsf(pixelg - highg))
-          dist_to_good = dist_to_ll;
-        else
-          dist_to_good = dist_to_hh;
-
-        float dist_to_bad = 1.0f;
-        if(fabsf(pixelg - lowg) < fabsf(pixelg - highg))
-          dist_to_bad = dist_to_hl;
-        else
-          dist_to_bad = dist_to_lh;
-
-        // make w higher if close to good, and smaller if close to bad.
-        w *= 1.0f * (0.2f + 1.0f / fmaxf(dist_to_good, 0.1f)) / (0.2f + 1.0f / fmaxf(dist_to_bad, 0.1f));
-      }
-
-      if(pixelg > avgg)
-      {
-        float logdiffs[2];
-        for(size_t kc = 0; kc <= 1; kc++)
-        {
-          const size_t c = (guide + kc + 1) % 3;
-          const float pixel = fmaxf(in[k * 4 + c], 1E-6f);
-          const float log_diff = log2f(pixel) - pixelg;
-          logdiffs[kc] = log_diff;
-        }
-        // regularization of logdiff to avoid too many problems with noise:
-        // we lower the weights of pixels with too high logdiff
-        const float maxlogdiff = fmaxf(fabsf(logdiffs[0]), fabsf(logdiffs[1]));
-        if(maxlogdiff > DT_CACORRECTRGB_MAX_EV_DIFF)
-        {
-          const float correction_weight = DT_CACORRECTRGB_MAX_EV_DIFF / maxlogdiff;
-          w *= correction_weight;
-        }
-        for(size_t kc = 0; kc <= 1; kc++)
-        {
-          const size_t c = (kc + guide + 1) % 3;
-          manifold_higher[k * 4 + c] = logdiffs[kc] * w;
-        }
-        manifold_higher[k * 4 + guide] = fmaxf(in[k * 4 + guide], 0.0f) * w;
-        manifold_higher[k * 4 + 3] = w;
-        // manifold_lower still contains the values from first iteration
-        // -> reset it.
-        for_four_channels(c)
-        {
-          manifold_lower[k * 4 + c] = 0.0f;
-        }
-      }
-      else
-      {
-        float logdiffs[2];
-        for(size_t kc = 0; kc <= 1; kc++)
-        {
-          const size_t c = (guide + kc + 1) % 3;
-          const float pixel = fmaxf(in[k * 4 + c], 1E-6f);
-          const float log_diff = log2f(pixel) - pixelg;
-          logdiffs[kc] = log_diff;
-        }
-        // regularization of logdiff to avoid too many problems with noise:
-        // we lower the weights of pixels with too high logdiff
-        const float maxlogdiff = fmaxf(fabsf(logdiffs[0]), fabsf(logdiffs[1]));
-        if(maxlogdiff > DT_CACORRECTRGB_MAX_EV_DIFF)
-        {
-          const float correction_weight = DT_CACORRECTRGB_MAX_EV_DIFF / maxlogdiff;
-          w *= correction_weight;
-        }
-        for(size_t kc = 0; kc <= 1; kc++)
-        {
-          const size_t c = (kc + guide + 1) % 3;
-          manifold_lower[k * 4 + c] = logdiffs[kc] * w;
-        }
-        manifold_lower[k * 4 + guide] = fmaxf(in[k * 4 + guide], 0.0f) * w;
-        manifold_lower[k * 4 + 3] = w;
-        // manifold_higher still contains the values from first iteration
-        // -> reset it.
-        for(size_t c = 0; c < 4; c++)
-        {
-          manifold_higher[k * 4 + c] = 0.0f;
-        }
-      }
-    }
+    // refinement pass (Rust FFI)
+    darkroom_cacorrectrgb_refine_manifolds(in, blurred_in,
+                                           blurred_manifold_lower, blurred_manifold_higher,
+                                           manifold_lower, manifold_higher,
+                                           width, height, (unsigned int)guide);
 
     dt_gaussian_blur_4c(g, manifold_higher, blurred_manifold_higher);
     dt_gaussian_blur_4c(g, manifold_lower, blurred_manifold_lower);
@@ -438,15 +276,8 @@ static void get_manifolds(const float* const restrict in, const size_t width, co
   dt_free_align(manifold_higher);
 
   // store all manifolds in the same structure to make upscaling faster
-  DT_OMP_FOR_SIMD(aligned(manifolds, blurred_manifold_lower, blurred_manifold_higher:64))
-  for(size_t k = 0; k < width * height; k++)
-  {
-    for(size_t c = 0; c < 3; c++)
-    {
-      manifolds[k * 6 + c] = blurred_manifold_higher[k * 4 + c];
-      manifolds[k * 6 + 3 + c] = blurred_manifold_lower[k * 4 + c];
-    }
-  }
+  darkroom_cacorrectrgb_pack_manifolds(blurred_manifold_lower, blurred_manifold_higher,
+                                       manifolds, width * height);
   dt_free_align(blurred_in);
   dt_free_align(blurred_manifold_lower);
   dt_free_align(blurred_manifold_higher);
@@ -461,65 +292,8 @@ static void apply_correction(const float* const restrict in,
                           float* const restrict out)
 
 {
-  DT_OMP_FOR()
-  for(size_t k = 0; k < width * height; k++)
-  {
-    const float high_guide = fmaxf(manifolds[k * 6 + guide], 1E-6f);
-    const float low_guide = fmaxf(manifolds[k * 6 + 3 + guide], 1E-6f);
-    const float log_high = log2f(high_guide);
-    const float log_low = log2f(low_guide);
-    const float dist_low_high = log_high - log_low;
-    const float pixelg = fmaxf(in[k * 4 + guide], 0.0f);
-    const float log_pixg = log2f(fminf(fmaxf(pixelg, low_guide), high_guide));
-
-    // determine how close our pixel is from the low manifold compared to the
-    // high manifold.
-    // if pixel value is lower or equal to the low manifold, weight_low = 1.0f
-    // if pixel value is higher or equal to the high manifold, weight_low = 0.0f
-    float weight_low = fabsf(log_high - log_pixg) / fmaxf(dist_low_high, 1E-6f);
-    // if the manifolds are very close, we are likely to introduce discontinuities
-    // and to have a meaningless "weight_low".
-    // thus in these cases make dist closer to 0.5.
-    // we set a threshold of 0.25f EV min.
-    const float threshold_dist_low_high = 0.25f;
-    if(dist_low_high < threshold_dist_low_high)
-    {
-      const float weight = dist_low_high / threshold_dist_low_high;
-      // dist_low_high = threshold_dist_low_high => dist
-      // dist_low_high = 0.0 => 0.5f
-      weight_low = weight_low * weight + 0.5f * (1.0f - weight);
-    }
-    const float weight_high = fmaxf(1.0f - weight_low, 0.0f);
-
-    for(size_t kc = 0; kc <= 1; kc++)
-    {
-      const size_t c = (guide + kc + 1) % 3;
-      const float pixelc = fmaxf(in[k * 4 + c], 0.0f);
-
-      const float ratio_high_manifolds = manifolds[k * 6 + c] / high_guide;
-      const float ratio_low_manifolds = manifolds[k * 6 + 3 + c] / low_guide;
-      // weighted geometric mean between the ratios.
-      const float ratio = powf(ratio_low_manifolds, weight_low) * powf(ratio_high_manifolds, weight_high);
-
-      const float outp = pixelg * ratio;
-
-      switch(mode)
-      {
-        case DT_CACORRECT_MODE_STANDARD:
-          out[k * 4 + c] = outp;
-          break;
-        case DT_CACORRECT_MODE_DARKEN:
-          out[k * 4 + c] = fminf(outp, pixelc);
-          break;
-        case DT_CACORRECT_MODE_BRIGHTEN:
-          out[k * 4 + c] = fmaxf(outp, pixelc);
-          break;
-      }
-    }
-
-    out[k * 4 + guide] = pixelg;
-    out[k * 4 + 3] = in[k * 4 + 3];
-  }
+  darkroom_cacorrectrgb_apply_correction(in, manifolds, width, height,
+                                         (unsigned int)guide, (unsigned int)mode, out);
 }
 
 static void reduce_artifacts(const float* const restrict in,
@@ -532,16 +306,7 @@ static void reduce_artifacts(const float* const restrict in,
   // in_out contains the 2 guided channels of in, and the 2 guided channels of out
   // it allows to blur all channels in one 4-channel gaussian blur instead of 2
   float *const restrict in_out = dt_alloc_align_float(width * height * 4);
-  DT_OMP_FOR()
-  for(size_t k = 0; k < width * height; k++)
-  {
-    for(size_t kc = 0; kc <= 1; kc++)
-    {
-      const size_t c = (guide + kc + 1) % 3;
-      in_out[k * 4 + kc * 2 + 0] = in[k * 4 + c];
-      in_out[k * 4 + kc * 2 + 1] = out[k * 4 + c];
-    }
-  }
+  darkroom_cacorrectrgb_pack_inout(in, out, in_out, width * height, (unsigned int)guide);
 
   float *const restrict blurred_in_out = dt_alloc_align_float(width * height * 4);
   const dt_aligned_pixel_t max = {FLT_MAX, FLT_MAX, FLT_MAX, FLT_MAX};
@@ -561,22 +326,8 @@ static void reduce_artifacts(const float* const restrict in,
   // the local averages are very different.
   // we use the same weight for all channels, as using different weights
   // introduces artifacts in practice.
-  DT_OMP_FOR()
-  for(size_t k = 0; k < width * height; k++)
-  {
-    float w = 1.0f;
-    for(size_t kc = 0; kc <= 1; kc++)
-    {
-      const float avg_in = log2f(fmaxf(blurred_in_out[k * 4 + kc * 2 + 0], 1E-6f));
-      const float avg_out = log2f(fmaxf(blurred_in_out[k * 4 + kc * 2 + 1], 1E-6f));
-      w *= expf(-fmaxf(fabsf(avg_out - avg_in), 0.01f) * safety);
-    }
-    for(size_t kc = 0; kc <= 1; kc++)
-    {
-      const size_t c = (guide + kc + 1) % 3;
-      out[k * 4 + c] = fmaxf(1.0f - w, 0.0f) * fmaxf(in[k * 4 + c], 0.0f) + w * fmaxf(out[k * 4 + c], 0.0f);
-    }
-  }
+  darkroom_cacorrectrgb_blend_artifacts(in, blurred_in_out, out,
+                                        width * height, (unsigned int)guide, safety);
   dt_free_align(blurred_in_out);
 }
 

@@ -113,6 +113,316 @@ pub unsafe extern "C" fn darkroom_cacorrectrgb_normalize_manifolds(
     // tool once the FFI surface stabilises and we want the throughput back.
 }
 
+const MAX_EV_DIFF: f32 = 2.0;
+
+/// Build the per-pixel manifolds from the raw input + its Gaussian blur.
+///
+/// For every pixel k (first-pass, non-refinement):
+///   pixelg = max(in[k*4 + guide], 1e-6)
+///   avg    = blurred_in[k*4 + guide]
+///   weighth = (pixelg >= avg) as f32
+///   weightl = (pixelg <= avg) as f32
+///   for each non-guide channel c:
+///     logdiff = log2(max(in[k*4+c], 1e-6)) - log2(pixelg)
+///   if max(|logdiff|) > MAX_EV_DIFF: downscale both weights
+///   write results into manifold_higher/lower (6 fields per pixel)
+///
+/// Matches the first DT_OMP_FOR in `get_manifolds()` (cacorrectrgb.c:234).
+#[no_mangle]
+pub unsafe extern "C" fn darkroom_cacorrectrgb_build_manifolds(
+    in_buf: *const f32,
+    blurred_in: *const f32,
+    manifold_lower: *mut f32,
+    manifold_higher: *mut f32,
+    width: usize,
+    height: usize,
+    guide: u32,
+) {
+    let npx = width.saturating_mul(height);
+    if npx == 0 || guide >= 3 { return; }
+    let g = guide as usize;
+    let inp  = std::slice::from_raw_parts(in_buf, npx * 4);
+    let blur = std::slice::from_raw_parts(blurred_in, npx * 4);
+    let lo   = std::slice::from_raw_parts_mut(manifold_lower, npx * 4);
+    let hi   = std::slice::from_raw_parts_mut(manifold_higher, npx * 4);
+
+    for k in 0..npx {
+        let b = k * 4;
+        let pixelg = inp[b + g].max(1e-6);
+        let avg    = blur[b + g];
+        let mut weighth = if pixelg >= avg { 1.0_f32 } else { 0.0 };
+        let mut weightl = if pixelg <= avg { 1.0_f32 } else { 0.0 };
+
+        let mut logdiffs = [0.0_f32; 2];
+        for kc in 0..=1usize {
+            let c = (kc + g + 1) % 3;
+            let pixel = inp[b + c].max(1e-6);
+            logdiffs[kc] = (pixel / pixelg).log2();
+        }
+
+        let maxlogdiff = logdiffs[0].abs().max(logdiffs[1].abs());
+        if maxlogdiff > MAX_EV_DIFF {
+            let cw = MAX_EV_DIFF / maxlogdiff;
+            weightl *= cw;
+            weighth *= cw;
+        }
+
+        for kc in 0..=1usize {
+            let c = (kc + g + 1) % 3;
+            hi[b + c] = logdiffs[kc] * weighth;
+            lo[b + c] = logdiffs[kc] * weightl;
+        }
+        hi[b + g] = pixelg * weighth;
+        lo[b + g] = pixelg * weightl;
+        hi[b + 3] = weighth;
+        lo[b + 3] = weightl;
+    }
+}
+
+/// Refinement pass: update manifolds using estimates from the first pass.
+///
+/// Matches the second DT_OMP_FOR in `get_manifolds()` (cacorrectrgb.c:299).
+/// Called only when `refine_manifolds` is true.
+#[no_mangle]
+pub unsafe extern "C" fn darkroom_cacorrectrgb_refine_manifolds(
+    in_buf: *const f32,
+    blurred_in: *const f32,
+    blurred_manifold_lower: *const f32,
+    blurred_manifold_higher: *const f32,
+    manifold_lower: *mut f32,
+    manifold_higher: *mut f32,
+    width: usize,
+    height: usize,
+    guide: u32,
+) {
+    let npx = width.saturating_mul(height);
+    if npx == 0 || guide >= 3 { return; }
+    let g = guide as usize;
+    let inp  = std::slice::from_raw_parts(in_buf,                    npx * 4);
+    let blur = std::slice::from_raw_parts(blurred_in,               npx * 4);
+    let blo  = std::slice::from_raw_parts(blurred_manifold_lower,   npx * 4);
+    let bhi  = std::slice::from_raw_parts(blurred_manifold_higher,  npx * 4);
+    let lo   = std::slice::from_raw_parts_mut(manifold_lower,  npx * 4);
+    let hi   = std::slice::from_raw_parts_mut(manifold_higher, npx * 4);
+
+    for k in 0..npx {
+        let b = k * 4;
+        let pixelg = inp[b + g].max(1e-6).log2();
+        let highg  = bhi[b + g].max(1e-6).log2();
+        let lowg   = blo[b + g].max(1e-6).log2();
+        let avgg   = blur[b + g].max(1e-6).log2();
+
+        let mut w = 1.0_f32;
+        for kc in 0..=1usize {
+            let c = (g + kc + 1) % 3;
+            let pixel = inp[b + c].max(1e-6).log2();
+            let highc = bhi[b + c].max(1e-6).log2();
+            let lowc  = blo[b + c].max(1e-6).log2();
+
+            let dist_ll = (pixelg - lowg  - pixel + lowc ).abs();
+            let dist_hh = (pixelg - highg - pixel + highc).abs();
+            let dist_lh = ((pixelg - pixel) - (highg - lowc )).abs();
+            let dist_hl = ((pixelg - pixel) - (lowg  - highc)).abs();
+
+            let dist_good = if (pixelg - lowg).abs() < (pixelg - highg).abs() { dist_ll } else { dist_hh };
+            let dist_bad  = if (pixelg - lowg).abs() < (pixelg - highg).abs() { dist_hl } else { dist_lh };
+
+            w *= (0.2 + 1.0 / dist_good.max(0.1)) / (0.2 + 1.0 / dist_bad.max(0.1));
+        }
+
+        if pixelg > avgg {
+            let mut logdiffs = [0.0_f32; 2];
+            for kc in 0..=1usize {
+                let c = (g + kc + 1) % 3;
+                let pixel = inp[b + c].max(1e-6);
+                logdiffs[kc] = pixel.log2() - pixelg;
+            }
+            let maxlogdiff = logdiffs[0].abs().max(logdiffs[1].abs());
+            if maxlogdiff > MAX_EV_DIFF { w *= MAX_EV_DIFF / maxlogdiff; }
+            for kc in 0..=1usize { let c = (kc + g + 1) % 3; hi[b + c] = logdiffs[kc] * w; }
+            hi[b + g] = inp[b + g].max(0.0) * w;
+            hi[b + 3] = w;
+            for c in 0..4 { lo[b + c] = 0.0; }
+        } else {
+            let mut logdiffs = [0.0_f32; 2];
+            for kc in 0..=1usize {
+                let c = (g + kc + 1) % 3;
+                let pixel = inp[b + c].max(1e-6);
+                logdiffs[kc] = pixel.log2() - pixelg;
+            }
+            let maxlogdiff = logdiffs[0].abs().max(logdiffs[1].abs());
+            if maxlogdiff > MAX_EV_DIFF { w *= MAX_EV_DIFF / maxlogdiff; }
+            for kc in 0..=1usize { let c = (kc + g + 1) % 3; lo[b + c] = logdiffs[kc] * w; }
+            lo[b + g] = inp[b + g].max(0.0) * w;
+            lo[b + 3] = w;
+            for c in 0..4 { hi[b + c] = 0.0; }
+        }
+    }
+}
+
+/// Pack two 4-channel manifolds into a single 6-channel manifold buffer.
+///
+/// For each pixel k and c in 0..3:
+///   out[k*6 + c]     = higher[k*4 + c]
+///   out[k*6 + 3 + c] = lower[k*4 + c]
+///
+/// Matches the DT_OMP_FOR_SIMD at cacorrectrgb.c:441.
+#[no_mangle]
+pub unsafe extern "C" fn darkroom_cacorrectrgb_pack_manifolds(
+    blurred_manifold_lower:  *const f32,
+    blurred_manifold_higher: *const f32,
+    manifolds_out: *mut f32,
+    npixels: usize,
+) {
+    if npixels == 0 { return; }
+    let lo  = std::slice::from_raw_parts(blurred_manifold_lower,  npixels * 4);
+    let hi  = std::slice::from_raw_parts(blurred_manifold_higher, npixels * 4);
+    let out = std::slice::from_raw_parts_mut(manifolds_out, npixels * 6);
+    for k in 0..npixels {
+        for c in 0..3 {
+            out[k * 6 + c]     = hi[k * 4 + c];
+            out[k * 6 + 3 + c] = lo[k * 4 + c];
+        }
+        // The alpha channel (index 3) of each 4-channel manifold is the
+        // confidence weight used during normalisation; it is intentionally
+        // dropped here — the downstream apply_correction pass only needs the
+        // RGB values in the 6-channel packed format.
+    }
+}
+
+/// Apply the manifold-based CA correction to every pixel.
+///
+/// `mode`: 0 = standard, 1 = darken only, 2 = brighten only.
+/// Guide channel is passed through unchanged; non-guide channels are
+/// corrected via a weighted geometric mean of the manifold ratios.
+/// Matches `apply_correction()` in cacorrectrgb.c:464.
+#[no_mangle]
+pub unsafe extern "C" fn darkroom_cacorrectrgb_apply_correction(
+    in_buf: *const f32,
+    manifolds: *const f32,
+    width: usize,
+    height: usize,
+    guide: u32,
+    mode: u32,
+    out_buf: *mut f32,
+) {
+    let npx = width.saturating_mul(height);
+    if npx == 0 || guide >= 3 { return; }
+    let g = guide as usize;
+    let inp = std::slice::from_raw_parts(in_buf,    npx * 4);
+    let mf  = std::slice::from_raw_parts(manifolds, npx * 6);
+    let out = std::slice::from_raw_parts_mut(out_buf, npx * 4);
+
+    for k in 0..npx {
+        let b4 = k * 4;
+        let b6 = k * 6;
+
+        let high_guide = mf[b6 + g].max(1e-6);
+        let low_guide  = mf[b6 + 3 + g].max(1e-6);
+        let log_high = high_guide.log2();
+        let log_low  = low_guide.log2();
+        let dist_low_high = log_high - log_low;
+        let pixelg  = inp[b4 + g].max(0.0);
+        let log_pixg = pixelg.clamp(low_guide, high_guide).log2();
+
+        let mut weight_low = (log_high - log_pixg).abs() / dist_low_high.max(1e-6);
+        const THRESHOLD: f32 = 0.25;
+        if dist_low_high < THRESHOLD {
+            let weight = dist_low_high / THRESHOLD;
+            weight_low = weight_low * weight + 0.5 * (1.0 - weight);
+        }
+        let weight_high = (1.0 - weight_low).max(0.0);
+
+        for kc in 0..=1usize {
+            let c = (g + kc + 1) % 3;
+            let pixelc = inp[b4 + c].max(0.0);
+            let ratio_hi = mf[b6 + c]     / high_guide;
+            let ratio_lo = mf[b6 + 3 + c] / low_guide;
+            let ratio = ratio_lo.powf(weight_low) * ratio_hi.powf(weight_high);
+            let outp  = pixelg * ratio;
+            out[b4 + c] = match mode {
+                1 => outp.min(pixelc),   // DT_CACORRECT_MODE_DARKEN
+                2 => outp.max(pixelc),   // DT_CACORRECT_MODE_BRIGHTEN
+                // 0 = DT_CACORRECT_MODE_STANDARD (and any future unknown value —
+                // new enum additions must be wired here explicitly).
+                _ => outp,
+            };
+        }
+        out[b4 + g] = pixelg;
+        out[b4 + 3] = inp[b4 + 3];
+    }
+}
+
+/// Pack in/out channel pairs for the reduce_artifacts blur step.
+///
+/// For each pixel k and kc in 0..=1:
+///   c = (guide + kc + 1) % 3
+///   in_out[k*4 + kc*2 + 0] = in[k*4 + c]   (input channel)
+///   in_out[k*4 + kc*2 + 1] = out[k*4 + c]  (corrected channel)
+///
+/// Matches the first DT_OMP_FOR in `reduce_artifacts()` (cacorrectrgb.c:535).
+#[no_mangle]
+pub unsafe extern "C" fn darkroom_cacorrectrgb_pack_inout(
+    in_buf: *const f32,
+    out_buf: *const f32,
+    inout_buf: *mut f32,
+    npixels: usize,
+    guide: u32,
+) {
+    if npixels == 0 || guide >= 3 { return; }
+    let g = guide as usize;
+    let inp  = std::slice::from_raw_parts(in_buf,  npixels * 4);
+    let outp = std::slice::from_raw_parts(out_buf, npixels * 4);
+    let io   = std::slice::from_raw_parts_mut(inout_buf, npixels * 4);
+    for k in 0..npixels {
+        let b = k * 4;
+        for kc in 0..=1usize {
+            let c = (g + kc + 1) % 3;
+            io[b + kc * 2]     = inp[b + c];
+            io[b + kc * 2 + 1] = outp[b + c];
+        }
+    }
+}
+
+/// Blend correction toward input when blurred averages diverge (artifact
+/// reduction). Uses the packed in/out blur result from the Gaussian step.
+///
+/// For each pixel k:
+///   w = product over kc of exp(-max(|avg_out - avg_in|, 0.01) * safety)
+///   out[k*4 + c] = max(1-w, 0)*max(in[k*4+c],0) + w*max(out[k*4+c],0)
+///
+/// Matches the second DT_OMP_FOR in `reduce_artifacts()` (cacorrectrgb.c:564).
+#[no_mangle]
+pub unsafe extern "C" fn darkroom_cacorrectrgb_blend_artifacts(
+    in_buf: *const f32,
+    blurred_inout: *const f32,
+    out_buf: *mut f32,
+    npixels: usize,
+    guide: u32,
+    safety: f32,
+) {
+    if npixels == 0 || guide >= 3 { return; }
+    let g = guide as usize;
+    let inp   = std::slice::from_raw_parts(in_buf,       npixels * 4);
+    let bio   = std::slice::from_raw_parts(blurred_inout, npixels * 4);
+    let out   = std::slice::from_raw_parts_mut(out_buf,  npixels * 4);
+
+    for k in 0..npixels {
+        let b = k * 4;
+        let mut w = 1.0_f32;
+        for kc in 0..=1usize {
+            let avg_in  = bio[b + kc * 2    ].max(1e-6).log2();
+            let avg_out = bio[b + kc * 2 + 1].max(1e-6).log2();
+            w *= (-(avg_out - avg_in).abs().max(0.01) * safety).exp();
+        }
+        for kc in 0..=1usize {
+            let c = (g + kc + 1) % 3;
+            out[b + c] = (1.0 - w).max(0.0) * inp[b + c].max(0.0)
+                       + w * out[b + c].max(0.0);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -213,6 +523,97 @@ mod tests {
             assert!((hi[c] - 0.5).abs() < 1e-5);
             assert!((lo[c] - 0.5).abs() < 1e-5);
         }
+    }
+
+    // ── new function tests ──────────────────────────────────────────────────
+
+    #[test]
+    fn build_manifolds_above_average_goes_to_higher() {
+        // guide = 0 (R), pixelg = 1.0 > avg = 0.5 → weighth=1, weightl=0
+        let inp  = vec![1.0_f32, 1.0, 1.0, 0.0];  // all channels 1.0
+        let blur = vec![0.5_f32, 0.5, 0.5, 0.0];
+        let mut lo = vec![99.0_f32; 4];
+        let mut hi = vec![99.0_f32; 4];
+        unsafe {
+            darkroom_cacorrectrgb_build_manifolds(
+                inp.as_ptr(), blur.as_ptr(),
+                lo.as_mut_ptr(), hi.as_mut_ptr(),
+                1, 1, 0,
+            );
+        }
+        // weighth=1 → hi gets the pixel values; weightl=0 → lo is zeroed
+        assert!((hi[3] - 1.0).abs() < 1e-6);  // weighth stored in alpha
+        assert_eq!(lo[3], 0.0);
+    }
+
+    #[test]
+    fn pack_manifolds_interleaves_correctly() {
+        let lo  = vec![1.0_f32, 2.0, 3.0, 0.0];
+        let hi  = vec![4.0_f32, 5.0, 6.0, 0.0];
+        let mut out = vec![0.0_f32; 6];
+        unsafe {
+            darkroom_cacorrectrgb_pack_manifolds(lo.as_ptr(), hi.as_ptr(), out.as_mut_ptr(), 1);
+        }
+        // hi goes to positions 0,1,2; lo to positions 3,4,5
+        assert_eq!(&out[0..3], &[4.0, 5.0, 6.0]);
+        assert_eq!(&out[3..6], &[1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn apply_correction_standard_mode_passthrough_when_ratio_one() {
+        // manifolds equal input pixel → ratio = 1 → out = in (for non-guide)
+        // guide=G(1): hi_guide = lo_guide = 0.5; pixelg = 0.5.
+        // For kc=0: c=2(B). ratio = (lo/lo)^0.5 * (hi/hi)^0.5 = 1. out[B] = 0.5.
+        let manifolds = vec![
+            0.5_f32, 0.5, 0.5,  // hi: R, G, B
+            0.5_f32, 0.5, 0.5,  // lo: R, G, B
+        ];
+        let inp = vec![0.5_f32, 0.5, 0.5, 1.0];
+        let mut out = vec![-1.0_f32; 4];
+        unsafe {
+            darkroom_cacorrectrgb_apply_correction(
+                inp.as_ptr(), manifolds.as_ptr(), 1, 1, 1, 0, out.as_mut_ptr(),
+            );
+        }
+        // guide channel preserved as-is
+        assert!((out[1] - 0.5).abs() < 1e-5);
+        // alpha preserved
+        assert_eq!(out[3], 1.0);
+    }
+
+    #[test]
+    fn pack_inout_fills_in_out_pairs() {
+        // guide=0(R) → c0=1(G), c1=2(B)
+        let inp  = vec![1.0_f32, 2.0, 3.0, 4.0];
+        let outp = vec![5.0_f32, 6.0, 7.0, 8.0];
+        let mut io = vec![-1.0_f32; 4];
+        unsafe {
+            darkroom_cacorrectrgb_pack_inout(inp.as_ptr(), outp.as_ptr(), io.as_mut_ptr(), 1, 0);
+        }
+        // kc=0: c=1(G) → io[0]=inp[G]=2, io[1]=out[G]=6
+        // kc=1: c=2(B) → io[2]=inp[B]=3, io[3]=out[B]=7
+        assert_eq!(io[0], 2.0); assert_eq!(io[1], 6.0);
+        assert_eq!(io[2], 3.0); assert_eq!(io[3], 7.0);
+    }
+
+    #[test]
+    fn blend_artifacts_w_one_keeps_output_intact() {
+        // w = exp(-max(|avg_out - avg_in|, 0.01) * safety)
+        // with safety = 0 → w = exp(0) = 1 → fully keeps output
+        let inp = vec![0.2_f32, 0.3, 0.4, 1.0];
+        let bio = vec![
+            0.3_f32, 0.3,  // kc=0: avg_in=0.3, avg_out=0.3 → |diff|=0
+            0.4_f32, 0.4,  // kc=1: avg_in=0.4, avg_out=0.4 → |diff|=0
+        ];
+        let mut out = vec![0.5_f32, 0.6, 0.7, 1.0];
+        unsafe {
+            darkroom_cacorrectrgb_blend_artifacts(
+                inp.as_ptr(), bio.as_ptr(), out.as_mut_ptr(), 1, 0, 0.0,
+            );
+        }
+        // w≈1 with safety=0, so out should stay close to its initial values
+        assert!((out[1] - 0.6).abs() < 0.01, "out[G]={}", out[1]);
+        assert!((out[2] - 0.7).abs() < 0.01, "out[B]={}", out[2]);
     }
 
     #[test]
